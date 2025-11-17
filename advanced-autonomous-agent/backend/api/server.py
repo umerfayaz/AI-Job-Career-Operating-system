@@ -1,0 +1,564 @@
+import os
+import fitz
+import docx
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
+from pydantic import BaseModel
+from typing import Dict, Optional
+import uvicorn
+from backend.core.email_sender import EmailSender
+from backend.tools.pdf_generator import PDFGenerator
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
+import asyncio
+
+# Import your autonomous agent app
+from backend.application import AgentApplication
+
+# Initialize global AgentApplication instance
+agent_app = AgentApplication()
+
+email_sender = EmailSender()
+pdf_generator = PDFGenerator()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown"""
+    print("🚀 Starting application...")
+    await agent_app.initialize()
+    print("✅ Application ready. Agent will start on task submission.")
+    yield
+    print("🛑 Shutting down application...")
+    await agent_app.shutdown()
+    print("✅ Shutdown complete")
+
+
+app = FastAPI(title="Autonomous Agent API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production: ["http://localhost:3000", "http://localhost:5173"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ------------------ API MODELS ------------------
+class TaskRequest(BaseModel):
+    task: str
+    task_id: str
+    priority: int = 5
+    config: Optional[Dict] = None
+
+
+class TaskResponse(BaseModel):
+    task_id: str
+    message: str
+    status: str
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    result: Optional[Dict] = None
+    error: Optional[str] = None
+
+
+# ------------------ Helper Functions ------------------
+def extract_text_from_pdf(file_path: str) -> str:
+    """Extract text from PDF"""
+    doc = fitz.open(file_path)
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    doc.close()
+    return text
+
+
+def extract_text_from_docx(file_path: str) -> str:
+    """Extract text from DOCX"""
+    doc = docx.Document(file_path)
+    text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+    return text
+
+
+def extract_text_from_file(file_path: str, filename: str) -> str:
+    """Extract text from file"""
+    if filename.endswith('.pdf'):
+        return extract_text_from_pdf(file_path)
+    elif filename.endswith('.docx'):
+        return extract_text_from_docx(file_path)
+    elif filename.endswith('.txt'):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    else:
+        raise ValueError(f"Unsupported file format: {filename}")
+
+
+# ------------------ API ENDPOINTS ------------------
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "status": "ok",
+        "message": "Autonomous Agent API is running",
+        "version": "1.0.0"
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.post("/task", response_model=TaskResponse)
+async def create_task(request: TaskRequest, background_tasks: BackgroundTasks):
+    """Create a Task for the Autonomous Agent"""
+    task_id = f"{request.task_id}_{int(datetime.now().timestamp())}"
+    print(f"📥 Received task: {task_id}")
+
+    # Schedule agent task in the background
+    background_tasks.add_task(
+        execute_agent_task,
+        task_id=task_id,
+        task_data=request.dict()
+    )
+
+    return TaskResponse(
+        task_id=task_id,
+        status="queued",
+        message="Task submitted successfully"
+    )
+
+
+@app.get("/task/{task_id}", response_model=TaskStatusResponse)
+async def get_task_status(task_id: str):
+    """Get status of a specific task"""
+    return TaskStatusResponse(
+        task_id=task_id,
+        status="processing",
+        result=None
+    )
+
+
+@app.get("/ping")
+async def ping():
+    """Simple ping endpoint"""
+    return {"message": "pong"}
+
+
+@app.get("/test")
+async def test_connection():
+    """Test frontend connection"""
+    return {
+        "message": "Frontend connected successfully!",
+        "timestamp": datetime.now().isoformat(),
+        "agent_status": "ready"
+    }
+
+
+@app.post("/resume/upload")
+async def upload_resume(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    user_email: Optional[str] = Form(None),
+    keywords: Optional[str] = Form(""),
+    location: Optional[str] = Form("Remote"),
+    experience_level: Optional[str] = Form("mid")
+):
+    """Upload Resume and trigger Job matching"""
+    try:
+        task_id = f"resume_{int(datetime.now().timestamp())}"
+        resume_id = f"resume_{task_id}"
+
+        print(f"Received Resume {file.filename}")
+
+        # Save file temporarily
+        os.makedirs("temp", exist_ok=True)
+        file_path = f"temp/{resume_id}_{file.filename}"
+
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Extract text from file
+        resume_text = extract_text_from_file(file_path, file.filename)
+        print(f"Extracted {len(resume_text)} characters from resume")
+
+        # Parse keywords
+        job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
+
+        # Prepare initial state for job matching workflow
+        initial_state = {
+            "task": "Find and match job opportunities for uploaded resume",
+            "task_type": "job_matching",
+            "task_id": task_id,
+            "priority": 5,
+            "resume_text": resume_text,
+            "resume_id": resume_id,
+            "job_keywords": job_keywords,
+            "job_location": location,
+            "experience_level": experience_level,
+            "user_email": user_email,
+            "user_id": f"_{task_id}",
+            "plan": [],
+            "current_step": 0,
+            "reasoning_history": [],
+            "search_queries": [],
+            "search_results": [],
+            "scraped_content": [],
+            "extracted_insights": [],
+            "analysis_results": {},
+            "relevant_memories": [],
+            "entity_context": {},
+            "conversation_history": [],
+            "confidence_score": 0.0,
+            "validation_results": {},
+            "errors": [],
+            "retry_count": 0,
+            "final_output": None,
+            "artifacts": [],
+            "iteration": 0,
+            "max_iteration": 10,
+            "started_at": datetime.now(),
+            "status": "running",
+            "jobs_data": [],
+            "matched_jobs": [],
+            "quality_check": {},
+            "email_status": {},
+            "report_data": {},
+            "final_report": None,
+            "pdf_path": None
+        }
+
+        config = {
+            "configurable": {
+                "thread_id": task_id
+            }
+        }
+
+        print(f"Starting Job matching workflow with: {task_id}")
+
+        # Run workflow in the background
+        background_tasks.add_task(
+            execute_job_matching_workflow,
+            task_id=task_id,
+            initial_state=initial_state,
+            config=config
+        )
+
+        # Clean up file
+        try:
+            os.remove(file_path)
+        except:
+            pass
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "message": "Resume uploaded successfully. Job matching is in progress...",
+            "status_endpoint": f"/task/{task_id}"
+        }
+
+    except Exception as e:
+        print(f"Resume Upload error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/resume/match")
+async def match_reume(
+    background_tasks: BackgroundTasks,
+    resume_text: str = Form(...),
+    user_email: Optional[str] =Form(None),
+    keywords: Optional[str] = Form(""),
+    location: Optional[str] = Form("Remote"),
+    experience_level: Optional[str] =Form("mid")
+):
+  """
+  EndPOINT: Submit resume as text Cruisul for Frontend
+  """
+  try: 
+      task_id = f"resume_text{int(datetime.now().timestamp())}"
+
+
+      ## Parse keywords 
+      job_keywords = [k.strip() for k in keywords.split(",")if k.strip()]
+
+
+      # Sample initial state as upload endpoint
+
+      initial_state = {
+           "task": f"Find and match job opportunities for provided resume",
+            "task_type": "job_matching",
+            "task_id": task_id,
+            "priority": 5,
+            "resume_text": resume_text,
+            "resume_id": f"resume_{task_id}",
+            "job_keywords": job_keywords,
+            "job_location": location,
+            "experience_level": experience_level,
+            "user_email": user_email,
+            "user_id": f"user_{task_id}",
+            
+            # Standard fields
+            "plan": [],
+            "current_step": 0,
+            "reasoning_history": [],
+            "search_queries": [],
+            "search_results": [],
+            "scraped_content": [],
+            "extracted_insights": [],
+            "analysis_results": {},
+            "relevant_memories": [],
+            "enitity_context": {},
+            "conversation_history": [],
+            "confidence_score": 0.0,
+            "validation_results": {},
+            "errors": [],
+            "retry_count": 0,
+            "final_output": None,
+            "artifacts": [],
+            "iteration": 0,
+            "max_iteration": 10,
+            "started_at": datetime.now(),
+            "status": "running",
+            
+            # Job fields
+            "jobs_data": [],
+            "matched_jobs": [],
+            "quality_check": {},
+            "email_status": {},
+            "report_data": {},
+            "final_report": None,
+            "pdf_path": None
+      }
+
+      config = {
+        "configurable": {
+            "thread_id": task_id
+        }
+      }
+
+
+      background_tasks.add_task(
+        execute_job_matching_workflow,
+        task_id =task_id,
+        initial_state=initial_state,
+        config=config
+      )
+
+      return{
+        "success": True,
+        "task_id": task_id,
+        "message": "Resume Submitted. Job matching in progress..."
+      }
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=str(e))
+
+  ## Backgrount task
+
+async def execute_job_matching_workflow(task_id: str, initial_state: dict, config: dict):
+    """Execute job matching workflow (separate from general research workflow)"""
+
+    try:
+        print(f"Starting job matching for: {task_id}")
+
+        result = await agent_app.agent_graph.graph.ainvoke(initial_state, config)
+
+        print(f"job matching{task_id} Completed")
+        print(f"Found{len(result.get('matched_jobs', []))} matching jobs")
+        print(f"Confidence {result.get('confidence_score',0):.2%}")
+
+        ## Generate and send report 
+        report_content = result.get('final_report') or result.get('final_output', '')
+
+        if report_content and result.get('user_email'):
+            print(f"Sending job report to:{result.get('user_email')}")
+
+            ## Genrate PDF
+            pdf_path = pdf_generator.markdown_to_pdf(
+                markdown_content=report_content,
+                filename = f"job_matches{task_id}" 
+            )
+
+            email_body = f"""
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; }}
+                    .header {{ background: #4CAF50; color: white; padding: 20px; }}
+                    .job {{ background: #f9f9f9; padding: 10px; margin: 10px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🎯 Your Job Matches Are Ready!</h1>
+                </div>
+                <p>We found {len(result.get('matched_jobs', []))} opportunities matching your profile.</p>
+                <h3>Top Matches:</h3>
+            """
+            
+            for i, job in enumerate(result.get('matched_jobs', [])[:5], 1):
+                email_body += f"""
+                <div class="job">
+                    <strong>{i}. {job.get('title', 'Position')}</strong><br>
+                    Company: {job.get('company', 'N/A')}<br>
+                    Match: {job.get('match_percentage', 0):.0f}%<br>
+                    Location: {job.get('location', 'N/A')}
+                </div>
+                """
+            
+            email_body += """
+                <p>📎 Full detailed report attached as PDF.</p>
+            </body>
+            </html>
+            """
+
+            email_sender.send_report(
+                subject =f"{len(result.get('matched_jobs', []))} Job matches found",
+                body=email_body,
+                pdf_path=pdf_path
+            )
+
+            print(f"Email sent Successfully")
+
+        return result
+    
+    except Exception as e:
+        print(f"Job matching {task_id} Failed {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# ------------------ AGENT EXECUTION ------------------
+async def execute_agent_task(task_id: str, task_data: Dict):
+    """Execute Agent Task via AgentApplication"""
+    try:
+        print(f"⚙️ Executing task {task_id}")
+        print(f"📋 Task data: {task_data}")
+
+        # Prepare initial state for LangGraph
+        initial_state = {
+            "task": task_data.get("task", ""),
+            "task_type": task_data.get("config", {}).get("task_type", "custom"),
+            "task_id": task_id,
+            "priority": task_data.get("priority", 5),
+            "plan": [],
+            "current_step": 0,
+            "reasoning_history": [],
+            "search_queries": [],
+            "search_results": [],
+            "scraped_content": [],
+            "extracted_insights": [],
+            "analysis_results": {},
+            "relevant_memories": [],
+            "entity_context": {},
+            "conversation_history": [],
+            "confidence_score": 0.0,
+            "validation_results": {},
+            "errors": [],
+            "retry_count": 0,
+            "final_output": None,
+            "artifacts": [],
+            "iteration": 0,
+            "max_iteration": 10,
+            "started_at": datetime.now(),
+            "status": "running",
+
+
+            "resume_text": None, 
+            "job_keywords": [],
+            "jobs_data": [],
+            "matched_jobs": [],
+        }
+
+        config = {"configurable": {"thread_id": task_id}}
+
+        print(f"🔄 Starting graph execution for {task_id}")
+        result = await agent_app.agent_graph.graph.ainvoke(initial_state, config)
+
+        print(f"✅ Task {task_id} completed successfully")
+        print(f"📊 Confidence Score: {result.get('confidence_score', 0)}")
+        print(f"📊 Iterations: {result.get('iteration', 0)}")
+        print(f"📝 Final Status: {result.get('status', 'unknown')}")
+
+        # Generate Report
+        print(f"Preparing email for task: {task_id}")
+
+        try:
+            report_content = result.get('final_output', '')
+            if report_content:
+                print(f"Report Generated: {len(report_content)} characters")
+            else:
+                print("No final output — creating summary from insights")
+                insights = result.get('extracted_insights', [])
+                report_content = f"Task Report:\n\n## Task: {task_data.get('task')}\n\n"
+                if insights:
+                    report_content += "## Key Findings\n\n"
+                    for i, insight in enumerate(insights[:5], 1):
+                        if isinstance(insight, dict):
+                            findings = insight.get('key_findings', [])
+                            for finding in findings[:3]:
+                                report_content += f"{i}. {finding}\n"
+                else:
+                    print("Task completed but no detailed insight available.\n")
+
+            task_type = task_data.get('config', {}).get('task_type', 'task')
+            pdf_path = pdf_generator.markdown_to_pdf(
+                markdown_content=report_content,
+                filename=f"{task_type}_{task_id}"
+            )
+            print(f"PDF Created: {pdf_path}")
+
+            task_name = task_data.get('task', 'Task')[:80]
+            confidence = result.get('confidence_score', 0)
+
+            email_body = f"""
+            <html>
+            <body>
+                <h2>🤖 Autonomous AI Agent Report</h2>
+                <p><strong>Task:</strong> {task_name}</p>
+                <p><strong>Type:</strong> {task_type}</p>
+                <p><strong>ID:</strong> {task_id}</p>
+                <p><strong>Confidence:</strong> {confidence:.1%}</p>
+                <p><strong>Iterations:</strong> {result.get('iteration', 0)}</p>
+                <hr>
+                <p><strong>Report Preview:</strong></p>
+                <p>{report_content[:600].replace('\n', '<br>')}...</p>
+                <p><em>Full report is attached as a PDF document.</em></p>
+            </body>
+            </html>
+            """
+
+            print("Sending email...")
+            email_sender.send_report(
+                subject=f"Task Completed: {task_name}",
+                body=email_body,
+                pdf_path=pdf_path
+            )
+            print(f"Report successfully sent to {email_sender.to_email}\n")
+
+        except Exception as email_error:
+            print(f"Failed to send email: {email_error}")
+            import traceback
+            traceback.print_exc()
+
+        return result
+
+    except Exception as e:
+        print(f"❌ Task {task_id} failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# ------------------ ENTRY POINT ------------------
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

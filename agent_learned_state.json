@@ -1,0 +1,45 @@
+{
+  "timestamp": "2025-11-16T23:25:02.020010",
+  "autonomous_decisions": 1,
+  "run_history": [
+    {
+      "cycle": 1,
+      "goal_progress": 0.2,
+      "improvements_applied": 0,
+      "autonomous_decision": 1,
+      "timestamp": "2025-11-16T23:25:02.013659"
+    }
+  ],
+  "learned_optimizations": {
+    "version": "1.0",
+    "timestamp": "2025-11-16T23:25:02.020025",
+    "optimizations": {
+      "keyword_expansions": [],
+      "ranking_adjustments": {},
+      "source_priorities": {},
+      "skill_weights": {}
+    },
+    "performance_metrics": {
+      "total_improvements": 0,
+      "avg_improvements_per_session": 0
+    }
+  },
+  "node_performance": {
+    "job_scraper": {
+      "success_rate": 0.8,
+      "avg_quality": 0.7
+    },
+    "job_matcher": {
+      "success_rate": 0.85,
+      "avg_quality": 0.75
+    },
+    "skill_analysis": {
+      "success_rate": 0.9,
+      "avg_quality": 0.8
+    },
+    "intelligent_ranker": {
+      "success_rate": 0.85,
+      "avg_quality": 0.8
+    }
+  }
+}

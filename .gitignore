@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# Google Service Account (do not upload)
+gmail_service_account.json
+
+# Node (if frontend exists)
+node_modules/
+
+# OS caches
+.DS_Store
+Thumbs.db
+
+# Local databases
+*.db
+*.sqlite
+chromadb/
+local_db/

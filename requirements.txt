@@ -1,0 +1,56 @@
+# Core Dependencies
+langgraph
+langchain
+langchain-openai
+langchain-anthropic
+langchain-community
+
+# MCP Protocol
+# mcp==0.9.0
+
+# Tools & Integrations
+httpx
+beautifulsoup4
+playwright
+requests
+pandas
+numpy
+fake-useragent
+aiohttp
+lxml
+
+# Memory & Vector Store
+chromadb
+sentence-transformers
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+redis
+
+# Monitoring & Observability
+opentelemetry-api
+opentelemetry-sdk
+prometheus-client
+structlog
+
+# Scheduling & Async
+apscheduler
+asyncio
+
+# Utilities
+python-dotenv
+pydantic
+tenacity
+
+psutil
+agent
+markdown
+weasyprint
+pymupdf
+python-docx
+spacy
+spacy
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz
+
