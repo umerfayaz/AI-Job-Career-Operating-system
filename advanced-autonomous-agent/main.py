@@ -7,6 +7,7 @@ from backend.agent.nodes import AgentNodes
 from backend.agent.autonomous_planner import AutonomousPlanner
 from backend.agent.goal_manager import GoalManager
 from backend.agent.self_improvement import SelfImprovementController
+from backend.application import AgentApplication
 from backend.agent.orchestrator import AgentOrchestrator
 from backend.config.settings import Settings
 import structlog
@@ -14,7 +15,7 @@ import structlog
 logger = structlog.get_logger()
 
 
-async def main():
+async def run_agentic_task():
     """Agentic : Fully autonomous execution"""
 
     logger.info(" Starting Agentic Ai Agent")
@@ -126,6 +127,79 @@ async def main():
     orchestrator.export_state('agent_learned_state.json')
 
     return result
+
+async def run_24_7_system():
+    """Mode 24_7 system multi_agent system"""
+    logger.info("24_7 Autonomous System")
+    logger.info("="*60)
+
+    # Initialize both system
+    agent_app = AgentApplication(agentic_mode=True, autonomous_24_7=True)
+    await agent_app.initialize()
+
+    logger.info("Starting 24_7 autonomous System")
+
+    try:
+        await agent_app.start_autonomous_system()
+    except KeyboardInterrupt:
+        logger.info("Starting autonomous system")
+        await agent_app.stop_autonomous_system()
+
+async def run_hybrid():
+    """Run agentic Task and 24_7 Hubrid System"""
+
+    logger.info("Mode: Hybrid (agentic + 24_7)")
+
+    agent_app = AgentApplication(agentic_mode=True, autonomous_24_7=True)
+    await agent_app.initialize()
+
+    # Starting 
+    logger.info("Strting 24_7 hybrid system")
+    asyncio.create_task(agent_app.start_autonomous_system())
+
+    ## Wait for a bit to start
+    await asyncio.sleep(2)
+
+    # Keep runinig the system
+    logger.info("System Continue Running")
+    logger.info("Press to stop everything\n")
+
+    try:
+        while True:
+            await asyncio.sleep(60)
+    except KeyboardInterrupt:
+        logger.info("Stopping all systems..")
+        await agent_app.stop_autonomous_system()
+
+async def main():
+    """Choose your Node"""
+
+    import sys
+
+    if len(sys.argv) > 1:
+        mode = sys.argv[1]
+    
+    else:
+        print("\nChoose Node")
+        print("1 - Single agentic task (goal_based)")
+        print("2- 24_7 autonomous System")
+        print("3 - Hybrid(both)")
+        choice = ("\nEnter Choice (1/2/3)")
+        mode = {'1': 'agentic', '2': '24/7', '3': 'hybride'}.get(choice, 'agentic')
+    
+    if mode == 'agentic':
+        await run_agentic_task()
+    
+    if mode == '24_7' or mode == '247':
+        await run_24_7_system()
+    
+    if mode == 'run_hybrid':
+        await run_hybrid()
+    
+    else:
+        print("Unknown Mode")
+
+
 
 
 if __name__ == "__main__":

@@ -770,7 +770,7 @@ class AgentNodes:
 
             state['reasoning_history'].append({
                 'node': 'job_matcher',
-                'action': 'match_jobs',
+                'action': 'matched_jobs',
                 'total_jobs': len(jobs),
                 'matched': len(matched_jobs),
                 'avg_score': avg_score,
@@ -841,7 +841,7 @@ class AgentNodes:
             if avg_score <0.3:
                 quality_check['passed'] = False
                 quality_check['issues'].append(f"Low match score (avg:{avg_score:.2f})")
-                quality_check['recommnedations'].append("Redefine resume or broader job search")
+                quality_check['recommendations'].append("Redefine resume or broader job search")
                 quality_check['quality_score'] = -0.2
             else:
                 quality_check['quality_score']= min(1.0, avg_score + 0.3)
@@ -1362,7 +1362,7 @@ class AgentNodes:
         for job in matched_jobs:
             # Skill comparison
             skill_comp =next(
-                (ja['skill_comparion'] for ja in job_skill_analysis
+                (ja['skill_comparison'] for ja in job_skill_analysis
                 if ja ['job_title'] == job.get('title')),
                 None
             )
@@ -1424,7 +1424,7 @@ class AgentNodes:
         # Skill match score
         if skill_comp:
             skill_score = (
-                skill_comp.get('match_percenatage', 0) / 100 * 0.7 +
+                skill_comp.get('match_percentage', 0) / 100 * 0.7 +
                 skill_comp.get('strength_score', 0) * 0.3
             )
         else:
@@ -1432,7 +1432,7 @@ class AgentNodes:
         scores['skill_match'] = skill_score
 
         ## Embedding score
-        embedding_score = job.get('matched_score', 0.5)
+        embedding_score = job.get('match_score', 0.5)
         scores['embedding_similarity'] =embedding_score
 
         # Location Preferences

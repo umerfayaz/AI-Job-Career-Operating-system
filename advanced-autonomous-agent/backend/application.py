@@ -24,27 +24,38 @@ from .mcp.database_server import DataMCPServer
 from .tools.analyzer import AnalysisTools
 
 
+from .multiagents.agents_orchestrator import AutonomousOrchestrator as  MultiAgentOrchestrator
+from .core.memory_system import MemoryRAGSystem
+
 
 logger = structlog.get_logger()
 
 
 class AgentApplication:
+    def __init__(self):
+        self.agents =[]
     """
     Main Application class orchestrate all components
     """
+    def init_orchestrator(self):
+        from backend.multiagents.agents_orchestrator import AutonomousOrchestrator
+        self.orhestrator = AutonomousOrchestrator()
 
-    def __init__(self, agentic_mode: bool = True):
+    def __init__(self, agentic_mode: bool = True, autonomous_24_7: bool = False):
         self.settings = Settings()
         self.tracer = setup_observability()
         self.agent_graph = None
         self.email_sender = EmailSender()
         self.pdf_generator = PDFGenerator()
+
         self.mcp_servers = {}
 
         self.agentic_mode = agentic_mode
         self.orchestrator = None
         self.orchestration = None
-
+        self.autonomous_24_7 = autonomous_24_7
+        self.multi_agent_orchestrator = None
+        self.memory_system = None
 
     
     async def initialize(self):
@@ -68,6 +79,11 @@ class AgentApplication:
 
         tools = self._initialize_tools()
 
+
+        # New Intialize Memory Syetem
+
+        self.memory_system = MemoryRAGSystem(persistent_directory=self.settings.CHROMA)
+        logger.info("Mmeory System Initialized")
 
         # Create Agent
 
@@ -94,6 +110,22 @@ class AgentApplication:
 
         logger.info("Agent Initialized Successfully")
 
+        ## Autonomous 24_7 Agent System
+        if self.autonomous_24_7:
+            logger.info("Enabling Autonomous System")
+        
+            self.multi_agent_orchestrator =MultiAgentOrchestrator(
+              agent_app=self,
+              memory=self.memory_system
+            )
+
+            logger.info("Multi Agent orchestrator Ready")
+        
+        logger.info("="*60)
+        logger.info("MultiAgent Syetem Operational")
+        logger.info("="*60)
+
+
     async def run_task(self, state: Dict, agentic: bool = None)->Dict:
         """Run task with Optional enhancement"""
 
@@ -118,7 +150,6 @@ class AgentApplication:
             config = {"configurable": {"thread_id": state.get('task_id')}}
             result = await self.agent_graph.graph.ainvoke(state, config)
 
-
         ## Initalize Orchestration
         scheduler_config = self._load_scheduler_config()
         self.orchestration = AutonomousOrchestration(
@@ -131,6 +162,30 @@ class AgentApplication:
         self.orchestration.start_time = datetime.now()
 
         logger.info(f"Graph Initialized Successfully")
+
+    
+    async def start_autonomous_system(self):
+        """Start 24_7 autonomous multi-agent-System"""
+        if not self.multi_agent_orchestrator:
+            raise RuntimeError("MutiAgent Orchestrator not initialzed . Set autonomous_24_7=True")
+        
+        logger.info("Starting 24_7 Autonomous System...")
+        await self.multi_agent_orchestrator.start()
+
+    async def stop_autonomous_agent(self):
+        """Stop Autonomous 24_7 Syetm"""
+
+        if self.multi_agent_orchestrator:
+            logger.info("Stopping Autonomous System...")   
+        return await self.multi_agent_orchestrator.stop()
+
+    async def get_autonomous_status(self):
+        """Get status of 24_7 System"""
+
+        if not self.multi_agent_orchestrator:
+            return {"enambled": False}
+
+        return self.multi_agent_orchestrator.get_status()
 
     
     async def _initialize_mcp_servers(self):

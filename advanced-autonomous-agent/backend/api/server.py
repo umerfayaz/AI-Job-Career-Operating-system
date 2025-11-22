@@ -6,15 +6,19 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, F
 from pydantic import BaseModel
 from typing import Dict, Optional
 import uvicorn
+from backend.multiagents.agents_orchestrator import AutonomousOrchestrator
 from backend.core.email_sender import EmailSender
 from backend.tools.pdf_generator import PDFGenerator
+import structlog
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import asyncio
 
+
 # Import your autonomous agent app
 from backend.application import AgentApplication
 
+logger = structlog.get_logger()
 # Initialize global AgentApplication instance
 agent_app = AgentApplication()
 
@@ -23,15 +27,32 @@ pdf_generator = PDFGenerator()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
-    print("🚀 Starting application...")
-    await agent_app.initialize()
-    print("✅ Application ready. Agent will start on task submission.")
-    yield
-    print("🛑 Shutting down application...")
-    await agent_app.shutdown()
-    print("✅ Shutdown complete")
+    async def _startup_shutdown():
+        print(" Starting application...")
+        await agent_app.initialize()
+        print(" Application ready. Agent will start on task submission.")
+
+        # Auto-start 24_7 System if configured
+        if os.getenv("AUTO_START_AUTONOMOUS", "false").lower() == "true":
+            logger.info("Auto Starting 24_7 autonomous system")
+            agent_app.autonomous_24_7 = True
+            agent_app.multi_agent_orchestrator = AutonomousOrchestrator(
+                memory=agent_app.memory_system
+            )
+            asyncio.create_task(agent_app.multi_agent_orchestrator.start())
+
+        try:
+            yield
+        finally:
+            print(" Shutting down application...")
+            if agent_app.multi_agent_orchestrator and agent_app.multi_agent_orchestrator.is_running:
+                await agent_app.multi_agent_orchestrator.stop()
+            await agent_app.shutdown()
+            print(" Shutdown complete")
+
+    return _startup_shutdown()
 
 
 app = FastAPI(title="Autonomous Agent API", version="1.0.0", lifespan=lifespan)
@@ -318,7 +339,7 @@ async def match_reume(
             "extracted_insights": [],
             "analysis_results": {},
             "relevant_memories": [],
-            "enitity_context": {},
+            "entity_context": {},
             "conversation_history": [],
             "confidence_score": 0.0,
             "validation_results": {},
@@ -442,8 +463,8 @@ async def execute_job_matching_workflow(task_id: str, initial_state: dict, confi
 async def execute_agent_task(task_id: str, task_data: Dict):
     """Execute Agent Task via AgentApplication"""
     try:
-        print(f"⚙️ Executing task {task_id}")
-        print(f"📋 Task data: {task_data}")
+        print(f" Executing task {task_id}")
+        print(f" Task data: {task_data}")
 
         # Prepare initial state for LangGraph
         initial_state = {
@@ -482,13 +503,13 @@ async def execute_agent_task(task_id: str, task_data: Dict):
 
         config = {"configurable": {"thread_id": task_id}}
 
-        print(f"🔄 Starting graph execution for {task_id}")
+        print(f"Starting graph execution for {task_id}")
         result = await agent_app.agent_graph.graph.ainvoke(initial_state, config)
 
-        print(f"✅ Task {task_id} completed successfully")
-        print(f"📊 Confidence Score: {result.get('confidence_score', 0)}")
-        print(f"📊 Iterations: {result.get('iteration', 0)}")
-        print(f"📝 Final Status: {result.get('status', 'unknown')}")
+        print(f"Task {task_id} completed successfully")
+        print(f"Confidence Score: {result.get('confidence_score', 0)}")
+        print(f"Iterations: {result.get('iteration', 0)}")
+        print(f"Final Status: {result.get('status', 'unknown')}")
 
         # Generate Report
         print(f"Preparing email for task: {task_id}")
@@ -524,7 +545,7 @@ async def execute_agent_task(task_id: str, task_data: Dict):
             email_body = f"""
             <html>
             <body>
-                <h2>🤖 Autonomous AI Agent Report</h2>
+                <h2> Autonomous AI Agent Report</h2>
                 <p><strong>Task:</strong> {task_name}</p>
                 <p><strong>Type:</strong> {task_type}</p>
                 <p><strong>ID:</strong> {task_id}</p>
@@ -554,9 +575,107 @@ async def execute_agent_task(task_id: str, task_data: Dict):
         return result
 
     except Exception as e:
-        print(f"❌ Task {task_id} failed: {e}")
+        print(f"Task {task_id} failed: {e}")
         import traceback
         traceback.print_exc()
+
+
+
+
+multi_agent_orchestrator = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Apllication"""
+    global multi_agent_orchestrator
+
+    await agent_app.initialize()
+
+    # Auto-start 24_7 System if configured 
+    if os.getenv("AUTO_START_AUTONOMOUS", "false").lower() == "true":
+        logger.info("Auto Starting 24_7 autonomous system")
+        multi_agent_orchestrator = agent_app.multi_agent_orchestrator
+        asyncio.create_task(multi_agent_orchestrator.start())
+
+@app.post("/api/autonomous/start")
+async def start_autonomous_system():
+    """Start 24/7 Multi agent System"""
+    global multi_agent_orchestrator
+
+    if not agent_app.autonomous_24_7:
+        # Enabling it dynamically
+        agent_app.autonomous_24_7 = True
+        agent_app.multi_agent_orchestrator = AutonomousOrchestrator(
+            agent_app=agent_app,
+            memory=agent_app.memory_system
+        )
+
+    if agent_app.multi_agent_orchestrator.is_running:
+        return {"success": False, "messgae": "Already Running"}
+
+    multi_agent_orchestrator = agent_app.multi_agent_orchestrator
+    asyncio.create_task(multi_agent_orchestrator.start())
+
+    return {
+        "Success": True,
+        "message": "24_7 Autonomous is Runnnig",
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.post("/api/autonomous/stop")
+async def stop_autonomous_system():
+    """Stop Autonomous System"""
+    if not agent_app.multi_agent_orchestrator or not agent_app.multi_agent_orchestrator.is_running:
+        return {"Success": False, "message": "Autonomous System is not Running"}
+    
+    await agent_app.multi_agent_orchestrator.stop()
+
+    return {
+        "success": True,
+        "message": "Autonomous System Stopped"
+    }
+
+@app.post("/api/autonomous/status")
+async def get_autonomous_status():
+    """Get 24_7 autonomous Status"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"enabled": False, "message": "Not Running"}
+    
+    status = agent_app.multi_agent_orchestrator.get_status()
+    return {"success": True, **status}
+
+@app.post("/api/autonomous/trigger/{event_type}")
+async def trugger_event(event_type:str, payload: dict):
+    """Manually Trigger an event"""
+
+
+    if not agent_app.multi_agent_orchestrator or not agent_app.multi_agent_orchestrator.is_running:
+        return {"success": False, "message": "System Not Running"}
+    
+    
+    event = {
+        'event_type': event_type,
+        'source': 'manual_api',
+        'payload': payload,
+        'timestamp': datetime.now().isoformat()
+    }
+
+    await agent_app.multi_agent_orchestrator.event_queue.put(event)
+
+    return {"success": True, "event": event}
+
+
+@app.get("/api/system/status")
+async def get_system_status():
+    """Get Status of Entire System"""
+    return {
+        "agentic_mode": agent_app.agentic_mode,
+        "autonomous_24_7": agent_app.autonomous_24_7,
+        "graph_initialized": agent_app.graph_initialized is not None,
+        "orchestrator_active":agent_app.orchestrator is not None,
+        "multi_agent_status": agent_app.get_autonomous_status(),
+        "memory_system": agent_app.memory_system is not None
+    }
 
 
 # ------------------ ENTRY POINT ------------------

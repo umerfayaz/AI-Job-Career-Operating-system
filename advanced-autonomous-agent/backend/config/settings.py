@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     """
     Application Settings with environment variable Support
     """
-
+    auto_start_autonomous: bool =False
 
 
     model_config = SettingsConfigDict(

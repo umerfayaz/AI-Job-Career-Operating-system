@@ -16,6 +16,8 @@ class MemoryRAGSystem:
     """
     def __init__(self, persistent_directory: str = "./chromadb"):
         """Initialize Chromadb and embedding models"""
+
+
         logger.info(f"Initializing Memory system at {persistent_directory}")
 
         self.client = chromadb.PersistentClient(
@@ -31,6 +33,13 @@ class MemoryRAGSystem:
 
         # Create collections
         self._initialize_collection()
+
+        self.job_postings_collection = self.job_collection
+        self.jobs_posting_collection = self.job_collection
+        self.match_history_collection = self.match_collection
+        self.resume_collection = self.resume_collection
+
+
         logger.info("Memory System Initialized")
 
     def _initialize_collection(self):
