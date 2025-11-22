@@ -16,7 +16,9 @@ from .agents_team import (
     ResumeMatcherAgent,
     ReportGeneratorAgent,
     MemoryMaintenanceAgent,
-    NotificationAgent
+    NotificationAgent,
+    EpisodicMemory,
+    SharedContext
 )
 
 from .decision_engine import EventType, DecisionEngine
@@ -37,20 +39,24 @@ class AutonomousOrchestrator:
         self.agent_app =get_app()
         self.memory = memory
 
+
+        # Initialze EpisodicMemory and SharedContext 
+        self.episodic_memory = EpisodicMemory(memory)
+        self.shared_context = SharedContext()
+
         ## Inittialize Components
         self.decision_engine = DecisionEngine()
         self.event_monitor = EventMonitor(memory)
         self.event_queue = asyncio.Queue()
 
-
         ## Inittialize Agents
 
         self.agents = {
-            'JobScraperAgent': JobScraperAgent(self.agent_app, memory),
-            'ResumeMatcherAgent': ResumeMatcherAgent(self.agent_app, memory),
-            'ReportGeneratorAgent': ReportGeneratorAgent(self.agent_app, memory),
-            'MemoryMaintenanceAgent': MemoryMaintenanceAgent(self.agent_app, memory),
-            'NotificationAgent': NotificationAgent(self.agent_app, memory)
+            'JobScraperAgent': JobScraperAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
+            'ResumeMatcherAgent': ResumeMatcherAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
+            'ReportGeneratorAgent': ReportGeneratorAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
+            'MemoryMaintenanceAgent': MemoryMaintenanceAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
+            'NotificationAgent': NotificationAgent(self.agent_app, memory, self.episodic_memory, self.shared_context)
         }
 
         self.is_running =False
@@ -149,12 +155,23 @@ class AutonomousOrchestrator:
                         datetime.now() - self.stats['start_time']
                     ).total_seconds()
 
+                    # Get global metrics
+                    global_metrics = await self.shared_context.read("global_metrics")
+
+
                     # Log stats
 
                     logger.info(f"="*60)
                     logger.info("AUTONOMOUS SYSTEM STATS")
                     logger.info(f"Events Processed: {self.stats['events_processed']}")
                     logger.info(f"Agents Activated: {self.stats['agents_activated']}")
+                    logger.info(f" {self.stats['uptime_seconds'] / 3600:.1f} hours")
+
+                    if global_metrics:
+                        logger.info("Today's global metrics")
+                        logger.info(f"Scraped jobs {global_metrics.get('jobs_scraped_today', 0)}")
+                        logger.info(f"Mateches created {global_metrics.get("'matches_created_today", 0)}")
+                        logger.info(f" Reoirts Generated {global_metrics.get('reports_generated_today', 0)}")
 
 
                     # Fo Specific agents
@@ -163,6 +180,11 @@ class AutonomousOrchestrator:
                        logger.info(f" Completed: {agent.metrics['task_completed']}")
                        logger.info(f" Failed: {agent.metrics['task_failed']}")
                        logger.info(f" Last run {agent.metrics['last_run'] or 'never'}")
+
+                    # Get Success rate from episodic memory
+                    success_rate = self.episodic_memory.get_success_rate(name, "any")
+                    logger.info(f"Success rate: {success_rate:.2%}")
+                    logger.info(f" Last run{agent.metrics['last_run'] or 'never'}")
                     
                     logger.info("="*60)
 
@@ -181,9 +203,16 @@ class AutonomousOrchestrator:
                     # Check if event Monitor is alive
 
                 for name, agent in self.agents.items():
-                    if agent.metrics['task_failed'] >10:
-                        logger.error(f" {name} has a high failure rate")
-                
+                    failure_rate = agent.metrics['task_failed']
+                    total_tasks = agent.metrics['task_completed'] + agent.metrics['task_failed']
+
+                    if total_tasks > 10 and failure_rate / total_tasks > 0.5:
+                        logger.warning(f"{name} has a high failure rate {failure_rate}/{total_tasks}")
+
+                        ## Get Learning from episodic memory
+                        learning = self.episodic_memory.learn_from_failures(name)
+                        logger.info(f" Recommendations {name}: {learning.get('recommendations', [])}")
+
             except Exception as e:
                 logger.info(f"Health check error {e}")
     
@@ -208,6 +237,7 @@ class AutonomousOrchestrator:
         logger.info(f" Active Agents {self.agents}")
         logger.info("Event Monitor: Active")
         logger.info("Decision Engine Active")
+        logger.info("Episodic Memory: Active")
         logger.info("="*60)
 
         ## await for all tasks
@@ -242,12 +272,16 @@ class AutonomousOrchestrator:
             'agents': {
                 name: {
                     'is_active': agent.is_active,
-                    'metrics': agent.metrics
+                    'metrics': agent.metrics,
+                    'success_rate': self.episodic_memory.get_success_rate(name, "any")
                 }
                 for name, agent in self.agents.items()
             },
-            'event_queue_size': self.event_queue.qsize()
+            'event_queue_size': self.event_queue.qsize(),
+            'episodic_memory_size': len(self.episodic_memory.experiences)
         }
+
+        
 
 
 
