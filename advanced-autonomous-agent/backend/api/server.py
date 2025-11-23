@@ -7,7 +7,9 @@ from pydantic import BaseModel
 from typing import Dict, Optional
 import uvicorn
 from backend.multiagents.agents_orchestrator import AutonomousOrchestrator
+from backend.core.memory_system import MemoryRAGSystem
 from backend.core.email_sender import EmailSender
+from backend.agent.scraper_engine import IntelligentJobScraper
 from backend.tools.pdf_generator import PDFGenerator
 import structlog
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,38 +23,38 @@ from backend.application import AgentApplication
 logger = structlog.get_logger()
 # Initialize global AgentApplication instance
 agent_app = AgentApplication()
-
 email_sender = EmailSender()
 pdf_generator = PDFGenerator()
 
 
 @asynccontextmanager
-def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
-    async def _startup_shutdown():
-        print(" Starting application...")
-        await agent_app.initialize()
-        print(" Application ready. Agent will start on task submission.")
 
-        # Auto-start 24_7 System if configured
-        if os.getenv("AUTO_START_AUTONOMOUS", "false").lower() == "true":
-            logger.info("Auto Starting 24_7 autonomous system")
-            agent_app.autonomous_24_7 = True
-            agent_app.multi_agent_orchestrator = AutonomousOrchestrator(
-                memory=agent_app.memory_system
-            )
-            asyncio.create_task(agent_app.multi_agent_orchestrator.start())
+    print("starting Apllication")
 
-        try:
-            yield
-        finally:
+    # Initiallize Agent App
+    await agent_app.initialize()
+    print("application Ready")
+
+    logger.info("Staring Autonomous Agent")
+    agent_app.Autonomous_24_7 = True
+    agent_app.multi_agent_orchestrator = AutonomousOrchestrator(
+        memory = agent_app.memory_system
+    )
+
+    # Start Orchestration in the background
+    agent_task = asyncio.create_task(agent_app.multi_agent_orchestrator.start())
+    logger.info("Multi-agent is running in the backgound")
+
+    try:
+        yield
+    finally:
             print(" Shutting down application...")
             if agent_app.multi_agent_orchestrator and agent_app.multi_agent_orchestrator.is_running:
                 await agent_app.multi_agent_orchestrator.stop()
             await agent_app.shutdown()
             print(" Shutdown complete")
-
-    return _startup_shutdown()
 
 
 app = FastAPI(title="Autonomous Agent API", version="1.0.0", lifespan=lifespan)
@@ -118,7 +120,7 @@ def extract_text_from_file(file_path: str, filename: str) -> str:
         raise ValueError(f"Unsupported file format: {filename}")
 
 
-# ------------------ API ENDPOINTS ------------------
+               # API ENDPOINTS 
 @app.get("/")
 async def root():
     """Root endpoint"""
@@ -193,105 +195,73 @@ async def upload_resume(
     location: Optional[str] = Form("Remote"),
     experience_level: Optional[str] = Form("mid")
 ):
-    """Upload Resume and trigger Job matching"""
     try:
         task_id = f"resume_{int(datetime.now().timestamp())}"
         resume_id = f"resume_{task_id}"
 
         print(f"Received Resume {file.filename}")
 
-        # Save file temporarily
-        os.makedirs("temp", exist_ok=True)
-        file_path = f"temp/{resume_id}_{file.filename}"
+        # Save resume file
+        os.makedirs("data/resumes", exist_ok=True)
+        file_path = f"data/resumes/{resume_id}_{file.filename}"
 
         with open(file_path, "wb") as f:
             content = await file.read()
             f.write(content)
 
-        # Extract text from file
+        #  Extract text
         resume_text = extract_text_from_file(file_path, file.filename)
-        print(f"Extracted {len(resume_text)} characters from resume")
 
-        # Parse keywords
+        print(f"Extracted {len(resume_text)} characters")
+
+        #  Prepare metadata
         job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
 
-        # Prepare initial state for job matching workflow
-        initial_state = {
-            "task": "Find and match job opportunities for uploaded resume",
-            "task_type": "job_matching",
-            "task_id": task_id,
-            "priority": 5,
-            "resume_text": resume_text,
+        resume_payload = {
             "resume_id": resume_id,
-            "job_keywords": job_keywords,
-            "job_location": location,
+            "resume_text": resume_text,
+            "keywords": job_keywords,
+            "location": location,
             "experience_level": experience_level,
             "user_email": user_email,
-            "user_id": f"_{task_id}",
-            "plan": [],
-            "current_step": 0,
-            "reasoning_history": [],
-            "search_queries": [],
-            "search_results": [],
-            "scraped_content": [],
-            "extracted_insights": [],
-            "analysis_results": {},
-            "relevant_memories": [],
-            "entity_context": {},
-            "conversation_history": [],
-            "confidence_score": 0.0,
-            "validation_results": {},
-            "errors": [],
-            "retry_count": 0,
-            "final_output": None,
-            "artifacts": [],
-            "iteration": 0,
-            "max_iteration": 10,
-            "started_at": datetime.now(),
-            "status": "running",
-            "jobs_data": [],
-            "matched_jobs": [],
-            "quality_check": {},
-            "email_status": {},
-            "report_data": {},
-            "final_report": None,
-            "pdf_path": None
+            "uploaded_at": datetime.now().isoformat()
         }
 
-        config = {
-            "configurable": {
-                "thread_id": task_id
-            }
-        }
+        #  Store resume in RAG memory
+        if agent_app.multi_agent_orchestrator is not None:
+            await agent_app.multi_agent_orchestrator.shared_context.set(
+                "latest_resume", resume_payload
+            )
 
-        print(f"Starting Job matching workflow with: {task_id}")
+            
+            try:
+                await agent_app.multi_agent_orchestrator.memory.store_resume(
+                    resume_id, resume_text, resume_payload
+                )
+            except:
+                print("⚠ No store_resume() function found. Skipping RAG store.")
 
-        # Run workflow in the background
-        background_tasks.add_task(
-            execute_job_matching_workflow,
-            task_id=task_id,
-            initial_state=initial_state,
-            config=config
-        )
+            #Trigger ResumeMatcherAgent cycle
+            background_tasks.add_task(
+                agent_app.multi_agent_orchestrator.trigger_manual_cycle,
+                "ResumeMatcherAgent"
+            )
 
-        # Clean up file
-        try:
-            os.remove(file_path)
-        except:
-            pass
+        else:
+            print("❌ Multi-agent orchestrator not running. Resume stored only.")
 
         return {
             "success": True,
-            "task_id": task_id,
-            "message": "Resume uploaded successfully. Job matching is in progress...",
-            "status_endpoint": f"/task/{task_id}"
+            "resume_id": resume_id,
+            "message": "Resume uploaded. Agents are processing it...",
         }
 
     except Exception as e:
-        print(f"Resume Upload error: {e}")
+        print(f"Upload error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"error": str(e)}
+
 
 
 @app.post("/resume/match")
@@ -392,11 +362,59 @@ async def execute_job_matching_workflow(task_id: str, initial_state: dict, confi
     try:
         print(f"Starting job matching for: {task_id}")
 
+        resume_id = initial_state.get("resume_id")
+        resume_text = initial_state.get("resume_text")
+        job_keywords = initial_state.get("job_keywords",[])
+
+        # Nofity multi - agents
+        if agent_app.multi_agent_orchestrator:
+         try:
+            await agent_app.multi_agent_orchestrator.notify_new_resume(
+                resume_id=resume_id,
+                keywords=job_keywords
+            )
+            logger.info(f"Notify multi-agents new resume: {resume_id}")
+         except Exception as e:
+            logger.error(f"Failed to notify {e}")
+        
+        jobs_count = len(result.get('jobs_data', []))
+        print(f"Found {jobs_count}")
+
+        # Notify about new jobs
+        if agent_app.multi_agent_orchestrator and jobs_count > 0:
+            try:
+                await agent_app.multi_agent_orchestrator.notify_new_jobs(
+                    jobs_count=jobs_count,
+                    soource = "main worklow"
+                )
+                logger.info(f"Notified multi agents {jobs_count}")
+            except Exception as e:
+                logger.error(f"Failed to count jobs {e}")
+        
+        # Notfify New matches created
+        matches_count = len(result.get('matches_found', []))
+        print(f"Found {matches_count} matching jobs")
+        print(f"COnfidence {result.get('confidence_score', 0):.2f}")
+
+        # Notify Agents about the matches
+        if agent_app.multi_agent_orchestrator and matches_count > 0:
+            try:
+                await agent_app.multi_agent_orchestrator.notify_matches_created(
+                    matches_count=matches_count,
+                    resume_id=resume_id
+                )
+                logger.info(f" New matches {matches_count} Created")
+            except Exception as e:
+                logger.error(f"Failed to create matches:{e}")
+
+
         result = await agent_app.agent_graph.graph.ainvoke(initial_state, config)
 
         print(f"job matching{task_id} Completed")
         print(f"Found{len(result.get('matched_jobs', []))} matching jobs")
         print(f"Confidence {result.get('confidence_score',0):.2%}")
+
+
 
         ## Generate and send report 
         report_content = result.get('final_report') or result.get('final_output', '')
@@ -676,6 +694,41 @@ async def get_system_status():
         "multi_agent_status": agent_app.get_autonomous_status(),
         "memory_system": agent_app.memory_system is not None
     }
+
+
+@app.get("/status/agents")
+async def get_agent_status():
+    """Check multi-agents status"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"error": "Multi-agent system not running"}
+
+@app.get("/status/agents/{agent_name}")
+async def get_agent_details(agent_name:str):
+    """Get agents details insight about specific agent"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"error": "Multi agent system is not running"}
+
+    return await multi_agent_orchestrator.get_agent_insights(agent_name)
+
+@app.post("/agent/trigger/{agent_name}")
+async def trigger_agent_manually(agent_name: str):
+    """Manually trigger agent for texting"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"error": "agent is not running"}
+    
+    if not agent_name in agent_app.multi_agent_orchestrator:
+        return {"error": f" Agent nane {agent_name} not found"}
+    
+    try:
+        agent = agent_app.multi_agent_orchestrator.agents[agent_name]
+        result = await agent.run_cycle
+        return {
+            "success": True,
+            "agent": agent_name,
+            "result": result
+        }
+    except Exception as e:
+        return {"Success": False, "error": str(e)}
 
 
 # ------------------ ENTRY POINT ------------------

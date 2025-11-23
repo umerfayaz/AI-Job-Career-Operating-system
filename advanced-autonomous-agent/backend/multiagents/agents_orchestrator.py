@@ -281,7 +281,78 @@ class AutonomousOrchestrator:
             'episodic_memory_size': len(self.episodic_memory.experiences)
         }
 
+    ## Integration Hooks - create with Exsiting Workflow
+
+    async def notify_new_resume(self, resume_id: str, keywords: List[str]):
+        """Called by main workflow when new resume is uploaded"""
+        logger.info(f"Main workflow notificed new resume:{resume_id}")
+
+        ## Stored in shared context
+        await self.shared_context.write("last_resume_id", resume_id, "main_workflow")
+        await self.shared_context.write("last_resume_keywords", keywords, "main_workflow")
+
+        ## Trigger event
+        await self.event_queue.put({
+            "type": "new_resume",
+            "data": {"resume_id": resume_id, "keywords": keywords}
+        })
+
+    async def notify_new_jobs(self, job_count: int, source: str ="main_workflow"):
+        """Called the main workflow when jobs are found"""
+
+        logger.info(f" New workflow found {job_count} {source}")
+
+
+        ## Stored in shred context
+        await self.shared_context.write("last_job_scrape", {
+            "count": job_count,
+            "source": source,
+            "time": datetime.now().isoformat(),
+            
+        },"main_workflow")
+
+        # Put trigger
+        await self.event_queue.put({
+            "type": "new_jobs",
+            "data": {"job_count": job_count, "source": source}
+        })     
+
+    async def notify_matches_created(self, match_count: int, resume_id: str):
+        """Called by mainworkflow when matches created"""
+
+        # Update shared context
+        await self.shared_context.update_metrics("matches_created_today", match_count)
+
+        # check if ready for report
+        if match_count >= 5:
+            logger.info("Enough matches for report generation")
+            await self.event_queue.put({
+                "type": "report_ready",
+                "data": {"resume_id": resume_id, "match_count": match_count}
+            })   
         
+    async def notify_agent_insight(self, agent_name:str) ->Dict:
+        """get insight about specific agents"""
+        if agent_name not in self.agents:
+            return {"error": "No agent found"}
+        
+        agent = self.agents[agent_name]
+        learning = self.episodic_memory.learn_from_failures(agent_name)
+        success_rate = self.episodic_memory.get_success_rate(agent_name, "any")
+        state = await self.shared_context.get_agent_state(agent_name)
+
+        return {
+            "agent": agent_name,
+            "metrics": agent.metrics,
+            "success_rate": success_rate,
+            "learning": learning,
+            "current_state": state,
+            "recent_experiences": self.episodic_memory.get_similar_experiences(agent_name, "any", limit=3)
+        }
+
+
+
+    
 
 
 

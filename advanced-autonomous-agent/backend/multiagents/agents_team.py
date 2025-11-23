@@ -124,7 +124,7 @@ class SharedContext:
             },
             "last_reset": datetime.now()
         }
-        self.lock =asyncio.lock()
+        self.lock =asyncio.Lock()
     
     async def write(self, key: str, value: Any, agent_name:str):
         """write a shared context"""
@@ -143,7 +143,7 @@ class SharedContext:
           if metric in self.context["global_metrics"]:
             self.context["global_metrics"][metric] += increment
     
-    async def get_agent_state(self, agent_name:str) ->Dict:
+    async def set_agent_state(self, agent_name, state_dict ) ->Dict:
         """Get Agent current state"""
         async with self.lock:
             return self.context["agent_states"].get(agent_name, {})
@@ -277,7 +277,7 @@ class BaseAutonomousAgent:
             result = await self.act(decision)
             
             # Record experience
-            self.episodic_memory.record_experience(
+            self.episodic_memory.record_experiences(
                 agent_name=self.name,
                 action=decision.get("action", "unknown"),
                 result=result,
@@ -304,7 +304,7 @@ class BaseAutonomousAgent:
             self.metrics["task_failed"] += 1
             
             # Record failure
-            self.episodic_memory.record_experience(
+            self.episodic_memory.record_experiences(
                 agent_name=self.name,
                 action="unknown",
                 result={"status": "error", "error": str(e)},
@@ -397,7 +397,7 @@ class JobScraperAgent(BaseAutonomousAgent):
                     logger.error(f"Failed scraping '{kw}': {e}")
 
         if all_jobs:
-            stored_count = self.memory.store_jobs(
+            stored_count = await self.memory.store_jobs(
                 jobs=all_jobs,
                 search_context={
                     "source": "autonomous_scraper", 
@@ -534,7 +534,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             logger.info(f" Created {matches_created} matches")
             
             # Update shared metrics
-            await self.shared_context.update_metric("matches_created_today", matches_created)
+            await self.shared_context.update_metrics("matches_created_today", matches_created)
 
             return {
                 "status": "success", 
@@ -637,7 +637,7 @@ class ReportGeneratorAgent(BaseAutonomousAgent):
                 logger.error(f"ReportGen failed for {user_id}: {e}", exc_info=True)
 
         # Update shared metrics
-        await self.shared_context.update_metric("reports_generated_today", count)
+        await self.shared_context.update_metrics("reports_generated_today", count)
 
         logger.info(f"ReportGen: Generated {count} reports")
         return {"status": "success", "reports_generated": count, "action": "generate"}
