@@ -7,6 +7,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from dateutil import parser
+from backend.multiagents.guardrails import JobReportGuardrails
 from sentence_transformers import SentenceTransformer
 import json
 
@@ -146,7 +147,8 @@ class SharedContext:
     async def set_agent_state(self, agent_name, state_dict ) ->Dict:
         """Get Agent current state"""
         async with self.lock:
-            return self.context["agent_states"].get(agent_name, {})
+             self.context["agent_states"].get(agent_name, {})
+             return state_dict
     
     async def add_task(self, task_id: str, task:Dict, agent_name:str):
         """Add a new task to the queue"""
@@ -193,10 +195,11 @@ class BaseAutonomousAgent:
     """Enhanced base class with episodic memory and shared context"""
 
     def __init__(self, name: str, agent_app, memory: MemoryRAGSystem, 
-                 episodic_memory: EpisodicMemory, shared_context: SharedContext):
+                 episodic_memory: EpisodicMemory, shared_context: SharedContext, guardrails: JobReportGuardrails):
         self.name = name
         self.agent_app = agent_app
         self.memory = memory
+        self.guardrails = guardrails
         self.episodic_memory = episodic_memory
         self.shared_context = shared_context
         self.is_active = True
@@ -312,15 +315,32 @@ class BaseAutonomousAgent:
             )
             
             return {"status": "error", "error": str(e)}
+    
+    async def sub_tasks(self, task_type: str, context: Dict):
+        """Agents can create new tasks"""
+        subtask ={
+            "type": task_type,
+            "created_by": self.name,
+            "context": context,
+            "timestamp": datetime.now().isoformat()
+        }
 
+        await self.shared_context.add_task(
+            f"_subtask{datetime.now().isoformat()}",
+            subtask,
+            self.name
+        )
+
+        logger.info(f" {self.name} created subtask: {task_type}")
+    
 
 # ENHANCED AGENTS WITH INTEGRATION
 class JobScraperAgent(BaseAutonomousAgent):
     """Monitors job platforms & scrapes new jobs - INTEGRATED"""
 
-    def __init__(self, agent_app, memory, episodic_memory, shared_context):
-        super().__init__("JobScraperAgent", agent_app, memory, episodic_memory, shared_context)
-        self.scrape_interval = 1800  # 30 minutes
+    def __init__(self, agent_app, memory, episodic_memory, shared_context, guardrails):
+        super().__init__("JobScraperAgent", agent_app, memory, episodic_memory, shared_context, guardrails)
+        self.scrape_interval = 300  # 30 minutes
 
     async def perceive(self):
         try:
@@ -382,45 +402,75 @@ class JobScraperAgent(BaseAutonomousAgent):
         keywords = decision["keywords"]
         all_jobs = []
 
-        async with IntelligentJobScraper() as scraper:
-            for kw in keywords[:5]:
-                try:
-                    jobs = await scraper.scrape_all_sources(
-                        keywords=[kw],
-                        location="Remote",
-                        max_results=25,
-                    )
-                    all_jobs.extend(jobs)
-                    logger.info(f" Scraped {len(jobs)} jobs for '{kw}'")
+        # Guardrails: Check if we are allowed to proceed with job fetching
+        can_proceed, reason = await self.guardrails.check_can_proceed(
+            "fetched_jobs",
+            {"keywords_count": len(decision["keywords"])}
+        )
 
-                except Exception as e:
-                    logger.error(f"Failed scraping '{kw}': {e}")
+        if not can_proceed:
+            logger.warning(f"Guardrails BLOCKED: {reason}")
+            return {"status": "BLOCKED", "reason": reason, "action": "scrape"}
 
-        if all_jobs:
-            stored_count = await self.memory.store_jobs(
-                jobs=all_jobs,
-                search_context={
-                    "source": "autonomous_scraper", 
-                    "time": datetime.now().isoformat()
-                },
-            )
-            logger.info(f"📦 Stored {stored_count} new jobs")
-            
-            # Update shared metrics
-            await self.shared_context.update_metrics("jobs_scraped_today", stored_count)
+        # Acquire task slot to avoid over-concurrency
+        if not await self.guardrails.acquire_task_slot():
+            logger.warning("Guardrails blocked: MAX TASK CONCURRENT")
+            return {"status": "BLOCKED", "reason": "MAX TASK CONCURRENT", "action": "scrape"}
 
-        return {
-            "status": "success",
-            "jobs_scraped": len(all_jobs),
-            "action": "scrape"
-        }
+        try:
+            async with IntelligentJobScraper() as scraper:
+                for kw in keywords[:5]:
+                    try:
+                        jobs = await scraper.scrape_all_sources(
+                            keywords=[kw],
+                            location="Remote",
+                            max_results=25,
+                        )
+                        all_jobs.extend(jobs)
+                        logger.info(f"Scraped {len(jobs)} jobs for '{kw}'")
+
+                    except Exception as e:
+                        logger.error(f"Failed scraping '{kw}': {e}")
+
+            if all_jobs:
+                stored_count = await self.memory.store_jobs(
+                    jobs=all_jobs,
+                    search_context={
+                        "source": "autonomous_scraper",
+                        "time": datetime.now().isoformat()
+                    },
+                )
+                logger.info(f"📦 Stored {stored_count} new jobs")
+
+                # Guardrails: Record fetch action
+                await self.guardrails.record_action("fetched_jobs")
+
+                # Update shared metrics
+                await self.shared_context.update_metrics("jobs_scraped_today", stored_count)
+
+                return {
+                    "status": "success",
+                    "jobs_scraped": len(all_jobs),
+                    "action": "scrape"
+                }
+
+            return {
+                "status": "no_jobs_found",
+                "jobs_scraped": 0,
+                "action": "scrape"
+            }
+
+        finally:
+            # Always release guardrail task slot
+            await self.guardrails.release_task()
+
 
 
 class ResumeMatcherAgent(BaseAutonomousAgent):
     """Matches incoming jobs with stored resumes - ENHANCED"""
 
-    def __init__(self, agent_app, memory, episodic_memory, shared_context):
-        super().__init__("ResumeMatcherAgent", agent_app, memory, episodic_memory, shared_context)
+    def __init__(self, agent_app, memory, episodic_memory, shared_context, guardrails):
+        super().__init__("ResumeMatcherAgent", agent_app, memory, episodic_memory, shared_context, guardrails)
         self.match_threshold = 0.40
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -518,12 +568,13 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
 
                     for j in top_idx:
                         if sim[j] >= threshold:
+                            user_id_clean = resumes['metadatas'][idx].get("user_id", "")
                             await self.memory.store_successful_match(
-                                user_id=resume_id.replace("resume_", "").replace("resume__", ""),
+                                user_id=user_id_clean,
                                 resume_id=resume_id,
                                 job={"id": jobs["ids"][j], **jobs["metadatas"][j]},
-                                match_score=float(sim[j]),
-                                user_action="auto_created",
+                                match_score= float(sim[j]),
+                                user_action="auto_created"
                             )
                             matches_created += 1
 
@@ -548,106 +599,151 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
 
 
 class ReportGeneratorAgent(BaseAutonomousAgent):
-    """Generates job match reports for users - FIXED"""
+    """Generate Jobs report for user with Nodes"""
+    def __init__(self, agent_app, memory, episodic_memory, shared_context, guardrails):
+        super().__init__("ReportGeneratorAgent", agent_app, memory, episodic_memory, shared_context, guardrails)
+        self.threshold = 1
+        self._nodes_cache = None
 
-    def __init__(self, agent_app, memory, episodic_memory, shared_context):
-        super().__init__("ReportGeneratorAgent", agent_app, memory, episodic_memory, shared_context)
-        self.threshold = 1  
+        self.reports_dir = os.getenv("REPORTS_dir", "reports" )
 
+    @property
+    def nodes(self):
+        """Lazy nodes - when first succeed"""
+        if self._nodes_cache is None:
+            if hasattr(self.agent_app, 'agent_graph') and self.agent_app.agent_graph:
+                if hasattr(self.agent_app.agent_graph, 'nodes'):
+                    self._nodes_cache = self.agent_app.agent_graph.nodes
+                    logger.info("Report Generator agent Successfully loaded agent nodes")
+                else:
+                    logger.error("Agent graph  exists but noo nodes are loaded")
+            else:
+                logger.warning("agent graph not available while accessing nodes")
+        return self._nodes_cache
+    
+    def link_nodes(self, agent_graph):
+        """Explicity link to agent_graph after its initialization"""
+        if hasattr(agent_graph, 'nodes'):
+            self._nodes_cache = self.agent_graph.nodes
+            logger.info("ReportGeneratorAgent: linked to agent_graph.nodes")
+        else:
+            logger.error("Provided agent_graph has no nodes")
+    
     async def perceive(self):
         try:
             prefs = self.memory.preferences_collection.get()
-
             if not prefs or not prefs.get("ids"):
-                logger.info("ReportGen: No preferences found")
+                logger.info("ReportGen: No Prefrence Found")
                 return {"has_work": False}
-
-            users = []
-
+        
+            users =  []
             for uid in prefs["ids"]:
-                uclean = uid.replace("pref_", "")
+                uclean = uid.replcae("pref_", "")
                 matches = self.memory.match_collection.get(
                     where={"user_id": uclean}
                 )
+                matches_count  = len(matches.get("ids", "") if matches else 0)
+                logger.info(f"ReportGen : User {uclean} found {matches_count} matches ({self.threshold})")
 
-                match_count = len(matches.get("ids", [])) if matches else 0
-                logger.info(f"ReportGen: User {uclean} has {match_count} matches (threshold: {self.threshold})")
-
-                if match_count >= self.threshold:
-                    users.append(uclean)  
+                if matches_count >= self.threshold:
+                    users.append(uclean)
 
             if not users:
                 logger.info("ReportGen: No users meet threshold")
                 return {"has_work": False}
 
-            logger.info(f"ReportGen: Found {len(users)} users ready for reports")
+            logger.info(f"ReportGen: Found users {len(users)}")
             return {"has_work": True, "users": users[:5]}
-
+        
         except Exception as e:
-            logger.error(f"ReportGen perception error: {e}", exc_info=True)
+            logger.error(f"' ReportGen: Perception {e}", exc_info=True)
             return {"has_work": False}
-
+    
     async def decide(self, perception):
         return {"action": "generate", "users": perception["users"]}
-
+    
     async def act(self, decision):
-        count = 0
+            count = 0
 
-        for user_id in decision["users"]:
-            try:
-                resume = self.memory.resume_collection.get(
-                    ids=[f"resume_{user_id}"]
-                )
+            for user_id in decision["users"]:
+                try:
+                    can_proceed, reason = await self.guardrails.check_can_proceed(
+                        "report_generation",
+                        {"report_size_mb": 10}
+                    )
 
-                if not resume or not resume.get("documents"):
-                    logger.warning(f"ReportGen: No resume found for {user_id}")
-                    continue
+                    if not can_proceed:
+                        logger.warning(f"Guardrails BLOCKED {e}")
+                        continue
 
-                resume_text = resume["documents"][0]
+                    found_resume =  None
 
-                matches = self.memory.match_collection.get(
-                    where={"user_id": user_id}, limit=15
-                )
+                    # Founding resume with id
+                    canidate_ids = []
+                    if user_id.startswith("resume") or user_id.startswith("_resume_"):
+                        canidate_ids.append(user_id)
 
-                if not matches or not matches.get("metadatas"):
-                    logger.warning(f"ReportGen: No matches for {user_id}")
-                    continue
+                        canidate_ids.append(user_id.replace("resume", "resume_"))
+                        canidate_ids.append(user_id.replace("resume_", ""))
 
-                state = {
-                    "task_id": f"auto_report_{user_id}_{int(datetime.now().timestamp())}",
-                    "resume_text": resume_text,
-                    "matched_jobs": [
-                        {
-                            "title": m.get("title"),
-                            "company": m.get("company"),
-                            "match_score": m.get("match_score"),
-                        }
-                        for m in matches.get("metadatas", [])
-                    ],
-                }
+                    
+                    # ID looking up
+                    for cid in [c for c in canidate_ids if c]:
+                        try:
+                            r = self.memory.resume_collection.get(ids=[cid], limit=1)
+                            if r and r.get("ids"):
+                                found_resume = r
+                                logger.info(f"ReportGen: found resume by {cid} for user {user_id}")
+                                break
+                        except Exception:
+                            pass
+                    
+                    # Found resume by metadata
+                    if not found_resume:
+                        try:
+                            r  = self.memory.resume_collection.get(where={"user_id": user_id}, limit=1)
+                            if r and r.get("documents"):
+                                found_resume = r
+                                logger.info(f"ReportGen: Found resume by metadat user_id{user_id}")
+                        except Exception:
+                            pass
+                    
+                    ## Still not found skipped it
+                    if not found_resume:
+                        logger.info(f"ReportGen: No resume found for {user_id}")
+                        continue
 
-                # Call report generator from main workflow
-                nodes = self.agent_app.agent_graph.nodes
-                await nodes.job_report_generator_node(state)
+                    resume_text = found_resume["documents"][0]
 
-                logger.info(f" Generated report for {user_id}")
-                count += 1
+                    # Fetching matched jobs
 
-            except Exception as e:
-                logger.error(f"ReportGen failed for {user_id}: {e}", exc_info=True)
+                    matches = self.memory.match_collection.get(
+                        where={"user_id": user_id}, limit=15
+                    )
 
-        # Update shared metrics
-        await self.shared_context.update_metrics("reports_generated_today", count)
+                    if not matches or not matches.get("metadatas"):
+                        logger.warning(f"ReportGen: No matches found for {user_id}")
+                        continue
+                    
 
-        logger.info(f"ReportGen: Generated {count} reports")
-        return {"status": "success", "reports_generated": count, "action": "generate"}
+
+
+
+
+
+
+
+        
+
+
+
 
 
 class NotificationAgent(BaseAutonomousAgent):
     """Sends email notifications - FIXED"""
     
-    def __init__(self, agent_app, memory, episodic_memory, shared_context):
-        super().__init__("NotificationAgent", agent_app, memory, episodic_memory, shared_context)
+    def __init__(self, agent_app, memory, episodic_memory, shared_context, guardrails):
+        super().__init__("NotificationAgent", agent_app, memory, episodic_memory, shared_context, guardrails)
         self.email_sender = EmailSender()  
         self.sent_reports = set()
         self.reports_dir = os.getenv("REPORTS_DIR", "reports")
@@ -726,8 +822,8 @@ class NotificationAgent(BaseAutonomousAgent):
 class MemoryMaintenanceAgent(BaseAutonomousAgent):
     """Maintains RAG memory system - FIXED"""
     
-    def __init__(self, agent_app, memory, episodic_memory, shared_context):
-        super().__init__("MemoryMaintenanceAgent", agent_app, memory, episodic_memory, shared_context)
+    def __init__(self, agent_app, memory, episodic_memory, shared_context, guardrails):
+        super().__init__("MemoryMaintenanceAgent", agent_app, memory, episodic_memory, shared_context, guardrails)
         self.interval = 86400  # 24 hours
         self.job_retention_days = 30
         self.match_retention_days = 90

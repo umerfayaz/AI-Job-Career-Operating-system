@@ -1,3 +1,13 @@
+"""
+ Running BOTH Brains Together
+
+- Starts both Brain 1 (LangGraph) and Brain 2 (Multi-agents) together
+- They share data through the unified application
+- API endpoints work with both systems
+- No code duplication or conflicts
+
+"""
+
 import os
 import fitz
 import docx
@@ -6,69 +16,78 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, F
 from pydantic import BaseModel
 from typing import Dict, Optional
 import uvicorn
-from backend.multiagents.agents_orchestrator import AutonomousOrchestrator
-from backend.core.memory_system import MemoryRAGSystem
-from backend.core.email_sender import EmailSender
-from backend.agent.scraper_engine import IntelligentJobScraper
-from backend.tools.pdf_generator import PDFGenerator
 import structlog
+from backend.multiagents.guardrails import JobReportGuardrails
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import asyncio
 
-
-# Import your autonomous agent app
 from backend.application import AgentApplication
+from backend.core.email_sender import EmailSender
+from backend.tools.pdf_generator import PDFGenerator
 
 logger = structlog.get_logger()
-# Initialize global AgentApplication instance
-agent_app = AgentApplication()
+
+# Global unified application
+agent_app = AgentApplication(agentic_mode=True, autonomous_24_7=True)
 email_sender = EmailSender()
+guardrails = JobReportGuardrails()
 pdf_generator = PDFGenerator()
+
+
+# LIFESPAN - Start BOTH Brains Together
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan event handler for startup and shutdown"""
-
-    print("starting Apllication")
-
-    # Initiallize Agent App
+    """
+    - Brain 1: LangGraph (for API workflows)
+    - Brain 2: Multi-agents (for 24/7 monitoring)
+    """
+    logger.info("=" * 60)
+    logger.info(" STARTING UNIFIED SYSTEM")
+    logger.info("=" * 60)
+    
+    # Initializing the unified application (both brains)
     await agent_app.initialize()
-    print("application Ready")
-
-    logger.info("Staring Autonomous Agent")
-    agent_app.Autonomous_24_7 = True
-    agent_app.multi_agent_orchestrator = AutonomousOrchestrator(
-        memory = agent_app.memory_system
-    )
-
-    # Start Orchestration in the background
-    agent_task = asyncio.create_task(agent_app.multi_agent_orchestrator.start())
-    logger.info("Multi-agent is running in the backgound")
-
+    
+    # Starting Brain 2 (multi-agent system) in background
+    logger.info(" Starting Brain 2 (24/7 Multi-Agents) in background...")
+    orchestrator_task = asyncio.create_task(agent_app.start_autonomous_system())
+    
+    logger.info("=" * 60)
+    logger.info(" UNIFIED SYSTEM READY")
+    logger.info("   Brain 1 (LangGraph): Ready for API requests")
+    logger.info("   Brain 2 (Multi-Agents):  Running 24/7")
+    logger.info("   Integration:  Connected")
+    logger.info("=" * 60)
+    
     try:
-        yield
+        yield  # API runs here
     finally:
-            print(" Shutting down application...")
-            if agent_app.multi_agent_orchestrator and agent_app.multi_agent_orchestrator.is_running:
-                await agent_app.multi_agent_orchestrator.stop()
-            await agent_app.shutdown()
-            print(" Shutdown complete")
+        logger.info(" Shutting down unified system...")
+        await agent_app.shutdown()
+        logger.info(" Shutdown complete")
 
 
-app = FastAPI(title="Autonomous Agent API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Unified Agent API", 
+    version="2.0.0",
+    description="Dual-brain system: LangGraph + Multi-Agents",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production: ["http://localhost:3000", "http://localhost:5173"]
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ------------------ API MODELS ------------------
+# MODELS
+
 class TaskRequest(BaseModel):
     task: str
     task_id: str
@@ -81,34 +100,27 @@ class TaskResponse(BaseModel):
     message: str
     status: str
 
-
 class TaskStatusResponse(BaseModel):
     task_id: str
     status: str
     result: Optional[Dict] = None
     error: Optional[str] = None
 
+# HELPER FUNCTIONS
 
-# ------------------ Helper Functions ------------------
 def extract_text_from_pdf(file_path: str) -> str:
-    """Extract text from PDF"""
     doc = fitz.open(file_path)
-    text = ""
-    for page in doc:
-        text += page.get_text()
+    text = "".join([page.get_text() for page in doc])
     doc.close()
     return text
 
 
 def extract_text_from_docx(file_path: str) -> str:
-    """Extract text from DOCX"""
     doc = docx.Document(file_path)
-    text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-    return text
+    return "\n".join([paragraph.text for paragraph in doc.paragraphs])
 
 
 def extract_text_from_file(file_path: str, filename: str) -> str:
-    """Extract text from file"""
     if filename.endswith('.pdf'):
         return extract_text_from_pdf(file_path)
     elif filename.endswith('.docx'):
@@ -120,24 +132,31 @@ def extract_text_from_file(file_path: str, filename: str) -> str:
         raise ValueError(f"Unsupported file format: {filename}")
 
 
-               # API ENDPOINTS 
+# API ENDPOINTS - Basic
+
+
 @app.get("/")
 async def root():
-    """Root endpoint"""
     return {
         "status": "ok",
-        "message": "Autonomous Agent API is running",
-        "version": "1.0.0"
+        "message": "Unified Agent API - Dual Brain System",
+        "version": "2.0.0",
+        "brains": {
+            "brain_1": "LangGraph (Goal-based workflows)",
+            "brain_2": "Multi-Agents (24/7 autonomous)"
+        }
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "system_status": agent_app.get_system_status()
     }
+
+
 
 
 @app.post("/task", response_model=TaskResponse)
@@ -170,21 +189,7 @@ async def get_task_status(task_id: str):
     )
 
 
-@app.get("/ping")
-async def ping():
-    """Simple ping endpoint"""
-    return {"message": "pong"}
-
-
-@app.get("/test")
-async def test_connection():
-    """Test frontend connection"""
-    return {
-        "message": "Frontend connected successfully!",
-        "timestamp": datetime.now().isoformat(),
-        "agent_status": "ready"
-    }
-
+# JOB MATCHING ENDPOINTS - Uses BOTH Brains
 
 @app.post("/resume/upload")
 async def upload_resume(
@@ -195,109 +200,55 @@ async def upload_resume(
     location: Optional[str] = Form("Remote"),
     experience_level: Optional[str] = Form("mid")
 ):
+    """
+    Upload resume and trigger job matching
+    
+    """
     try:
+
+        job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
+
+        can_proceed, reason = await guardrails.check_can_proceed(
+            "fetched_jobs",
+            {"keywords_count": len(job_keywords)}
+        )
+
+        if not can_proceed:
+           raise  HTTPException(
+            statue_code = 429,
+            detail=f"Rate Limit: {reason}"
+           )
+
         task_id = f"resume_{int(datetime.now().timestamp())}"
         resume_id = f"resume_{task_id}"
 
-        print(f"Received Resume {file.filename}")
+        logger.info(f"📄 Received resume: {file.filename}")
 
-        # Save resume file
-        os.makedirs("data/resumes", exist_ok=True)
-        file_path = f"data/resumes/{resume_id}_{file.filename}"
+        # Save file
+        os.makedirs("temp", exist_ok=True)
+        file_path = f"temp/{resume_id}_{file.filename}"
 
         with open(file_path, "wb") as f:
             content = await file.read()
             f.write(content)
 
-        #  Extract text
+        # Extract text
         resume_text = extract_text_from_file(file_path, file.filename)
+        logger.info(f"   Extracted {len(resume_text)} characters")
 
-        print(f"Extracted {len(resume_text)} characters")
-
-        #  Prepare metadata
-        job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
-
-        resume_payload = {
-            "resume_id": resume_id,
-            "resume_text": resume_text,
-            "keywords": job_keywords,
-            "location": location,
-            "experience_level": experience_level,
-            "user_email": user_email,
-            "uploaded_at": datetime.now().isoformat()
-        }
-
-        #  Store resume in RAG memory
-        if agent_app.multi_agent_orchestrator is not None:
-            await agent_app.multi_agent_orchestrator.shared_context.set(
-                "latest_resume", resume_payload
-            )
-
-            
-            try:
-                await agent_app.multi_agent_orchestrator.memory.store_resume(
-                    resume_id, resume_text, resume_payload
-                )
-            except:
-                print("⚠ No store_resume() function found. Skipping RAG store.")
-
-            #Trigger ResumeMatcherAgent cycle
-            background_tasks.add_task(
-                agent_app.multi_agent_orchestrator.trigger_manual_cycle,
-                "ResumeMatcherAgent"
-            )
-
-        else:
-            print("❌ Multi-agent orchestrator not running. Resume stored only.")
-
-        return {
-            "success": True,
-            "resume_id": resume_id,
-            "message": "Resume uploaded. Agents are processing it...",
-        }
-
-    except Exception as e:
-        print(f"Upload error: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e)}
-
-
-
-@app.post("/resume/match")
-async def match_reume(
-    background_tasks: BackgroundTasks,
-    resume_text: str = Form(...),
-    user_email: Optional[str] =Form(None),
-    keywords: Optional[str] = Form(""),
-    location: Optional[str] = Form("Remote"),
-    experience_level: Optional[str] =Form("mid")
-):
-  """
-  EndPOINT: Submit resume as text Cruisul for Frontend
-  """
-  try: 
-      task_id = f"resume_text{int(datetime.now().timestamp())}"
-
-
-      ## Parse keywords 
-      job_keywords = [k.strip() for k in keywords.split(",")if k.strip()]
-
-
-      # Sample initial state as upload endpoint
-
-      initial_state = {
-           "task": f"Find and match job opportunities for provided resume",
+        # Prepare state for Brain 1 (LangGraph workflow)
+        initial_state = {
+            "task": "Find and match job opportunities for uploaded resume",
             "task_type": "job_matching",
             "task_id": task_id,
             "priority": 5,
             "resume_text": resume_text,
-            "resume_id": f"resume_{task_id}",
+            "resume_id": resume_id,
             "job_keywords": job_keywords,
             "job_location": location,
             "experience_level": experience_level,
             "user_email": user_email,
-            "user_id": f"user_{task_id}",
+            "user_id": f"_{task_id}",
             
             # Standard fields
             "plan": [],
@@ -322,7 +273,7 @@ async def match_reume(
             "started_at": datetime.now(),
             "status": "running",
             
-            # Job fields
+            # Job-specific fields
             "jobs_data": [],
             "matched_jobs": [],
             "quality_check": {},
@@ -330,104 +281,76 @@ async def match_reume(
             "report_data": {},
             "final_report": None,
             "pdf_path": None
-      }
-
-      config = {
-        "configurable": {
-            "thread_id": task_id
         }
-      }
+
+        config = {"configurable": {"thread_id": task_id}}
+
+        logger.info(f"🎯 Starting unified workflow: {task_id}")
+
+        # Run in background using unified application
+        background_tasks.add_task(
+            execute_unified_job_matching,
+            task_id=task_id,
+            initial_state=initial_state,
+            config=config
+        )
+
+        # Clean up temp file
+        try:
+            os.remove(file_path)
+        except:
+            pass
+
+        await guardrails.record_action("fetched_jobs")
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "message": "Resume uploaded. Dual-brain system processing...",
+            "status_endpoint": f"/task/{task_id}",
+            "brains_active": {
+                "langgraph": True,
+                "multi_agents": True
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Upload error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-      background_tasks.add_task(
-        execute_job_matching_workflow,
-        task_id =task_id,
-        initial_state=initial_state,
-        config=config
-      )
 
-      return{
-        "success": True,
-        "task_id": task_id,
-        "message": "Resume Submitted. Job matching in progress..."
-      }
-  except Exception as e:
-    raise HTTPException(status_code=500, detail=str(e))
+# BACKGROUND TASK - Unified Workflow
 
-  ## Backgrount task
-
-async def execute_job_matching_workflow(task_id: str, initial_state: dict, config: dict):
-    """Execute job matching workflow (separate from general research workflow)"""
-
+async def execute_unified_job_matching(task_id: str, initial_state: dict, config: dict):
+    """
+    Execute job matching using the unified application
+    
+    """
     try:
-        print(f"Starting job matching for: {task_id}")
-
-        resume_id = initial_state.get("resume_id")
-        resume_text = initial_state.get("resume_text")
-        job_keywords = initial_state.get("job_keywords",[])
-
-        # Nofity multi - agents
-        if agent_app.multi_agent_orchestrator:
-         try:
-            await agent_app.multi_agent_orchestrator.notify_new_resume(
-                resume_id=resume_id,
-                keywords=job_keywords
-            )
-            logger.info(f"Notify multi-agents new resume: {resume_id}")
-         except Exception as e:
-            logger.error(f"Failed to notify {e}")
+        logger.info(f" Starting unified job matching: {task_id}")
         
-        jobs_count = len(result.get('jobs_data', []))
-        print(f"Found {jobs_count}")
-
-        # Notify about new jobs
-        if agent_app.multi_agent_orchestrator and jobs_count > 0:
-            try:
-                await agent_app.multi_agent_orchestrator.notify_new_jobs(
-                    jobs_count=jobs_count,
-                    soource = "main worklow"
-                )
-                logger.info(f"Notified multi agents {jobs_count}")
-            except Exception as e:
-                logger.error(f"Failed to count jobs {e}")
+        # Run through unified application (handles both brains)
+        result = await agent_app.run_langgraph_workflow(initial_state, config)
         
-        # Notfify New matches created
-        matches_count = len(result.get('matches_found', []))
-        print(f"Found {matches_count} matching jobs")
-        print(f"COnfidence {result.get('confidence_score', 0):.2f}")
-
-        # Notify Agents about the matches
-        if agent_app.multi_agent_orchestrator and matches_count > 0:
-            try:
-                await agent_app.multi_agent_orchestrator.notify_matches_created(
-                    matches_count=matches_count,
-                    resume_id=resume_id
-                )
-                logger.info(f" New matches {matches_count} Created")
-            except Exception as e:
-                logger.error(f"Failed to create matches:{e}")
-
-
-        result = await agent_app.agent_graph.graph.ainvoke(initial_state, config)
-
-        print(f"job matching{task_id} Completed")
-        print(f"Found{len(result.get('matched_jobs', []))} matching jobs")
-        print(f"Confidence {result.get('confidence_score',0):.2%}")
-
-
-
-        ## Generate and send report 
+        logger.info(f" Unified workflow completed: {task_id}")
+        logger.info(f"   Jobs found: {len(result.get('jobs_data', []))}")
+        logger.info(f"   Matches: {len(result.get('matched_jobs', []))}")
+        logger.info(f"   Confidence: {result.get('confidence_score', 0):.2%}")
+        
+        # Generate and send report
         report_content = result.get('final_report') or result.get('final_output', '')
 
         if report_content and result.get('user_email'):
-            print(f"Sending job report to:{result.get('user_email')}")
+            logger.info(f"📧 Sending report to: {result.get('user_email')}")
 
-            ## Genrate PDF
+            # Generate PDF
             pdf_path = pdf_generator.markdown_to_pdf(
                 markdown_content=report_content,
-                filename = f"job_matches{task_id}" 
+                filename=f"job_matches_{task_id}" 
             )
 
+            # Create email
             email_body = f"""
             <html>
             <head>
@@ -440,6 +363,7 @@ async def execute_job_matching_workflow(task_id: str, initial_state: dict, confi
             <body>
                 <div class="header">
                     <h1>🎯 Your Job Matches Are Ready!</h1>
+                    <p>Powered by Dual-Brain AI System</p>
                 </div>
                 <p>We found {len(result.get('matched_jobs', []))} opportunities matching your profile.</p>
                 <h3>Top Matches:</h3>
@@ -456,28 +380,27 @@ async def execute_job_matching_workflow(task_id: str, initial_state: dict, confi
                 """
             
             email_body += """
-                <p>📎 Full detailed report attached as PDF.</p>
+                <p>📎 Full report attached as PDF.</p>
+                <p><small>🧠 Processed by LangGraph + Multi-Agent System</small></p>
             </body>
             </html>
             """
 
             email_sender.send_report(
-                subject =f"{len(result.get('matched_jobs', []))} Job matches found",
+                subject=f"{len(result.get('matched_jobs', []))} Job Matches Found",
                 body=email_body,
                 pdf_path=pdf_path
             )
 
-            print(f"Email sent Successfully")
+            logger.info(f" Email sent successfully")
 
         return result
     
     except Exception as e:
-        print(f"Job matching {task_id} Failed {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Unified workflow failed: {task_id} - {e}", exc_info=True)
 
 
-# ------------------ AGENT EXECUTION ------------------
+
 async def execute_agent_task(task_id: str, task_data: Dict):
     """Execute Agent Task via AgentApplication"""
     try:
@@ -600,137 +523,141 @@ async def execute_agent_task(task_id: str, task_data: Dict):
 
 
 
-multi_agent_orchestrator = None
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize Apllication"""
-    global multi_agent_orchestrator
-
-    await agent_app.initialize()
-
-    # Auto-start 24_7 System if configured 
-    if os.getenv("AUTO_START_AUTONOMOUS", "false").lower() == "true":
-        logger.info("Auto Starting 24_7 autonomous system")
-        multi_agent_orchestrator = agent_app.multi_agent_orchestrator
-        asyncio.create_task(multi_agent_orchestrator.start())
-
-@app.post("/api/autonomous/start")
-async def start_autonomous_system():
-    """Start 24/7 Multi agent System"""
-    global multi_agent_orchestrator
-
-    if not agent_app.autonomous_24_7:
-        # Enabling it dynamically
-        agent_app.autonomous_24_7 = True
-        agent_app.multi_agent_orchestrator = AutonomousOrchestrator(
-            agent_app=agent_app,
-            memory=agent_app.memory_system
-        )
-
-    if agent_app.multi_agent_orchestrator.is_running:
-        return {"success": False, "messgae": "Already Running"}
-
-    multi_agent_orchestrator = agent_app.multi_agent_orchestrator
-    asyncio.create_task(multi_agent_orchestrator.start())
-
-    return {
-        "Success": True,
-        "message": "24_7 Autonomous is Runnnig",
-        "timestamp": datetime.now().isoformat()
-    }
-
-@app.post("/api/autonomous/stop")
-async def stop_autonomous_system():
-    """Stop Autonomous System"""
-    if not agent_app.multi_agent_orchestrator or not agent_app.multi_agent_orchestrator.is_running:
-        return {"Success": False, "message": "Autonomous System is not Running"}
-    
-    await agent_app.multi_agent_orchestrator.stop()
-
-    return {
-        "success": True,
-        "message": "Autonomous System Stopped"
-    }
-
-@app.post("/api/autonomous/status")
-async def get_autonomous_status():
-    """Get 24_7 autonomous Status"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"enabled": False, "message": "Not Running"}
-    
-    status = agent_app.multi_agent_orchestrator.get_status()
-    return {"success": True, **status}
-
-@app.post("/api/autonomous/trigger/{event_type}")
-async def trugger_event(event_type:str, payload: dict):
-    """Manually Trigger an event"""
-
-
-    if not agent_app.multi_agent_orchestrator or not agent_app.multi_agent_orchestrator.is_running:
-        return {"success": False, "message": "System Not Running"}
-    
-    
-    event = {
-        'event_type': event_type,
-        'source': 'manual_api',
-        'payload': payload,
-        'timestamp': datetime.now().isoformat()
-    }
-
-    await agent_app.multi_agent_orchestrator.event_queue.put(event)
-
-    return {"success": True, "event": event}
-
+# SYSTEM STATUS ENDPOINTS
 
 @app.get("/api/system/status")
 async def get_system_status():
-    """Get Status of Entire System"""
-    return {
-        "agentic_mode": agent_app.agentic_mode,
-        "autonomous_24_7": agent_app.autonomous_24_7,
-        "graph_initialized": agent_app.graph_initialized is not None,
-        "orchestrator_active":agent_app.orchestrator is not None,
-        "multi_agent_status": agent_app.get_autonomous_status(),
-        "memory_system": agent_app.memory_system is not None
-    }
+    """Get complete system status (both brains)"""
+    return agent_app.get_system_status()
 
+
+@app.get("/api/system/brain1")
+async def get_brain1_status():
+    """Get Brain 1 (LangGraph) status"""
+    status = agent_app.get_system_status()
+    return status["brain_1_langgraph"]
+
+
+@app.get("/api/system/brain2")
+async def get_brain2_status():
+    """Get Brain 2 (Multi-Agents) status"""
+    return agent_app.get_autonomous_status()
+
+# MULTI-AGENT ENDPOINTS (Brain 2 Control)
 
 @app.get("/status/agents")
 async def get_agent_status():
-    """Check multi-agents status"""
+    """Get status of all multi-agents"""
     if not agent_app.multi_agent_orchestrator:
-        return {"error": "Multi-agent system not running"}
+        return {"error": "Multi-agent system not initialized"}
+    
+    return agent_app.multi_agent_orchestrator.get_status()
+
 
 @app.get("/status/agents/{agent_name}")
-async def get_agent_details(agent_name:str):
-    """Get agents details insight about specific agent"""
+async def get_agent_details(agent_name: str):
+    """Get detailed insights about a specific agent"""
     if not agent_app.multi_agent_orchestrator:
-        return {"error": "Multi agent system is not running"}
-
-    return await multi_agent_orchestrator.get_agent_insights(agent_name)
-
-@app.post("/agent/trigger/{agent_name}")
-async def trigger_agent_manually(agent_name: str):
-    """Manually trigger agent for texting"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"error": "agent is not running"}
+        return {"error": "Multi-agent system not initialized"}
     
-    if not agent_name in agent_app.multi_agent_orchestrator:
-        return {"error": f" Agent nane {agent_name} not found"}
+    return await agent_app.multi_agent_orchestrator.notify_agent_insight(agent_name)
+
+
+@app.post("/agents/trigger/{agent_name}")
+async def trigger_agent_manually(agent_name: str):
+    """Manually trigger a specific agent"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"error": "Multi-agent system not initialized"}
+    
+    if agent_name not in agent_app.multi_agent_orchestrator.agents:
+        return {"error": f"Agent '{agent_name}' not found"}
     
     try:
         agent = agent_app.multi_agent_orchestrator.agents[agent_name]
-        result = await agent.run_cycle
+        result = await agent.run_cycle()
         return {
             "success": True,
             "agent": agent_name,
             "result": result
         }
     except Exception as e:
-        return {"Success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
-# ------------------ ENTRY POINT ------------------
+# INTEGRATION ENDPOINTS
+
+@app.post("/api/integration/notify/resume")
+async def notify_new_resume(resume_id: str, keywords: list):
+    """Manually notify Brain 2 about a new resume"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"error": "Multi-agent system not initialized"}
+    
+    await agent_app.multi_agent_orchestrator.notify_new_resume(resume_id, keywords)
+    return {"success": True, "message": f"Brain 2 notified about resume {resume_id}"}
+
+
+@app.post("/api/integration/notify/jobs")
+async def notify_new_jobs(job_count: int, source: str = "manual"):
+    """Manually notify Brain 2 about new jobs"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"error": "Multi-agent system not initialized"}
+    
+    await agent_app.multi_agent_orchestrator.notify_new_jobs(job_count, source)
+    return {"success": True, "message": f"Brain 2 notified about {job_count} jobs"}
+
+
+# TEST ENDPOINTS
+
+@app.get("/test/connection")
+async def test_connection():
+    return {
+        "message": "Unified system connected!",
+        "timestamp": datetime.now().isoformat(),
+        "system": agent_app.get_system_status()
+    }
+
+
+@app.post("/test/brain1")
+async def test_brain1():
+    """Test Brain 1 (LangGraph)"""
+    if not agent_app.agent_graph:
+        return {"error": "Brain 1 not initialized"}
+    
+    return {
+        "status": "ok",
+        "brain": "LangGraph",
+        "components": {
+            "graph": agent_app.agent_graph is not None,
+            "orchestrator": agent_app.orchestrator is not None,
+            "goal_manager": agent_app.goal_manager is not None
+        }
+    }
+
+
+@app.post("/test/brain2")
+async def test_brain2():
+    """Test Brain 2 (Multi-Agents)"""
+    if not agent_app.multi_agent_orchestrator:
+        return {"error": "Brain 2 not initialized"}
+    
+    # Trigger a simple agent cycle
+    try:
+        agent = agent_app.multi_agent_orchestrator.agents["ResumeMatcherAgent"]
+        result = await agent.run_cycle()
+        return {
+            "status": "ok",
+            "brain": "Multi-Agents",
+            "test_result": result
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+# ENTRY POINT
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )

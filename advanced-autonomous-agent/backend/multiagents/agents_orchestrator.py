@@ -5,6 +5,7 @@ Runs 24/ Cordinates all agents based on events
 
 import asyncio
 from typing import List , Dict
+from backend.multiagents.guardrails import JobReportGuardrails
 from datetime import datetime
 import structlog
 import signal
@@ -40,6 +41,9 @@ class AutonomousOrchestrator:
         self.memory = memory
 
 
+        # Initialize Guardrails
+        self.guardrails = JobReportGuardrails()
+
         # Initialze EpisodicMemory and SharedContext 
         self.episodic_memory = EpisodicMemory(memory)
         self.shared_context = SharedContext()
@@ -52,11 +56,11 @@ class AutonomousOrchestrator:
         ## Inittialize Agents
 
         self.agents = {
-            'JobScraperAgent': JobScraperAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
-            'ResumeMatcherAgent': ResumeMatcherAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
-            'ReportGeneratorAgent': ReportGeneratorAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
-            'MemoryMaintenanceAgent': MemoryMaintenanceAgent(self.agent_app, memory, self.episodic_memory, self.shared_context),
-            'NotificationAgent': NotificationAgent(self.agent_app, memory, self.episodic_memory, self.shared_context)
+            'JobScraperAgent': JobScraperAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
+            'ResumeMatcherAgent': ResumeMatcherAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
+            'ReportGeneratorAgent': ReportGeneratorAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
+            'MemoryMaintenanceAgent': MemoryMaintenanceAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
+            'NotificationAgent': NotificationAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails)
         }
 
         self.is_running =False
@@ -97,7 +101,7 @@ class AutonomousOrchestrator:
             for agent_name in agents_to_activate:
                 agent = self.agents.get(agent_name)
 
-                if agent and agents_to_activate:
+                if agent:
                     tasks.append(agent.run_cycle())
                     self.stats['agents_activated'] +=1
             
@@ -140,6 +144,29 @@ class AutonomousOrchestrator:
                 logger.error(f" Error in Processing loop {e}")
                 await asyncio.sleep(1)
     
+    async def autonomous_goal_generation_loop(self):
+        """Generate new goal based on system state"""
+        while self.is_running:
+            try:
+                await asyncio.sleep(300)
+
+                # Chec if system needs work
+                resume_count = len(self.memory.resume_collection.get().get("ids", []))
+                job_count = len(self.memory.job_collection.get().get("ids", []))
+
+                # Goal if resume exists but old jobs, scrape new one's
+                if resume_count > 0 and job_count < 50:
+                    logger.info(f"Goal Generated need more jobs")
+                    await self.event_queue.put({
+                        "type": "autonomous_goal",
+                        "Goal": "scrape-more-jobs",
+                        "reason": f" Job count {job_count} jobs for {resume_count} resumes"
+                    })
+            
+            except Exception as e:
+                logger.error(f"Goal generator failed {e}")
+            
+    
     async def stats_reporter_loop(self):
         """Periodically Reports Stats"""
         logger.info("Stats reporter started")
@@ -155,38 +182,35 @@ class AutonomousOrchestrator:
                         datetime.now() - self.stats['start_time']
                     ).total_seconds()
 
-                    # Get global metrics
-                    global_metrics = await self.shared_context.read("global_metrics")
+                # Get global metrics
+                global_metrics = await self.shared_context.read("global_metrics")
 
+                # Log stats
+                logger.info(f"="*60)
+                logger.info("AUTONOMOUS SYSTEM STATS")
+                logger.info(f"Events Processed: {self.stats['events_processed']}")
+                logger.info(f"Agents Activated: {self.stats['agents_activated']}")
+                logger.info(f" {self.stats['uptime_seconds'] / 3600:.1f} hours")
 
-                    # Log stats
-
-                    logger.info(f"="*60)
-                    logger.info("AUTONOMOUS SYSTEM STATS")
-                    logger.info(f"Events Processed: {self.stats['events_processed']}")
-                    logger.info(f"Agents Activated: {self.stats['agents_activated']}")
-                    logger.info(f" {self.stats['uptime_seconds'] / 3600:.1f} hours")
-
-                    if global_metrics:
-                        logger.info("Today's global metrics")
-                        logger.info(f"Scraped jobs {global_metrics.get('jobs_scraped_today', 0)}")
-                        logger.info(f"Mateches created {global_metrics.get("'matches_created_today", 0)}")
-                        logger.info(f" Reoirts Generated {global_metrics.get('reports_generated_today', 0)}")
+                if global_metrics:
+                    logger.info("Today's global metrics")
+                    logger.info(f"Scraped jobs {global_metrics.get('jobs_scraped_today', 0)}")
+                    logger.info(f"Matches created {global_metrics.get('matches_created_today', 0)}")
+                    logger.info(f" Reoirts Generated {global_metrics.get('reports_generated_today', 0)}")
 
 
                     # Fo Specific agents
-                    for name , agent in self.agents.items():
-                       logger.info(f" {name}")
-                       logger.info(f" Completed: {agent.metrics['task_completed']}")
-                       logger.info(f" Failed: {agent.metrics['task_failed']}")
-                       logger.info(f" Last run {agent.metrics['last_run'] or 'never'}")
+                for name , agent in self.agents.items():
+                    logger.info(f" {name}")
+                    logger.info(f" Completed: {agent.metrics['task_completed']}")
+                    logger.info(f" Failed: {agent.metrics['task_failed']}")
+                    logger.info(f" Last run {agent.metrics['last_run'] or 'never'}")
 
                     # Get Success rate from episodic memory
                     success_rate = self.episodic_memory.get_success_rate(name, "any")
                     logger.info(f"Success rate: {success_rate:.2%}")
-                    logger.info(f" Last run{agent.metrics['last_run'] or 'never'}")
                     
-                    logger.info("="*60)
+                logger.info("="*60)
 
             except Exception as e:
                 logger.error(f"Stats Reporter Error{e}")
@@ -230,7 +254,8 @@ class AutonomousOrchestrator:
             asyncio.create_task(self.event_monitor.monitor_loop(self.event_queue)),
             asyncio.create_task(self.event_processed_loop()),
             asyncio.create_task(self.stats_reporter_loop()),
-            asyncio.create_task(self.health_check_loop())
+            asyncio.create_task(self.health_check_loop()),
+            asyncio.create_task(self.autonomous_goal_generation_loop())
         ]
 
         logger.info("ALL Systems are Operational")

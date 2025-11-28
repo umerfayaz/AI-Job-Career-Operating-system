@@ -13,7 +13,8 @@ class EventType(Enum):
     NEW_MATCHES = "new_matches"
     SCHEDULED = "scheduled"
     USER_ACTION = "user_action"
-    SYSTEM_MAINTENANCE = "system_maintenance"  
+    SYSTEM_MAINTENANCE = "system_maintenance" 
+    AUTONOMOUS_GOAL = "autonomous_goal" 
 
 
 class DecisionEngine:
