@@ -15,6 +15,7 @@ env/
 .env
 .env.*
 *.env
+react-frontend/.env
 
 # Google Service Account (do not upload)
 gmail_service_account.json
@@ -29,5 +30,28 @@ Thumbs.db
 # Local databases
 *.db
 *.sqlite
-chromadb/
 local_db/
+**/data/chroma/**
+
+
+# Model caches
+model_cache/
+
+# Temporary files
+temp/
+backend/temp/
+
+# Generated reports
+**/reports/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent runtime state
+agent_learned_state.json
+t
+tatus

@@ -1,4 +1,4 @@
-# agent/real_job_scraper.py
+
 """
 LEAN: Real API job scraper with smart fallback
 Sources: JSearch (RapidAPI), Adzuna
@@ -7,30 +7,41 @@ Sources: JSearch (RapidAPI), Adzuna
 import asyncio
 import aiohttp
 import os
+import time
 from typing import List, Dict
+from backend.observability.tracer import tracer
+from opentelemetry.trace import Status, StatusCode
+from backend.core.event_bus import get_event_bus
+from backend.narration.emitter import AgentEmitter
+from backend.core.event_bus import get_event_bus
 from datetime import datetime, timedelta
 import structlog
 
 logger = structlog.get_logger()
+event_bus = get_event_bus()
 
 class IntelligentJobScraper:
     """Job scraper using only real APIs with smart fallback."""
 
-    def __init__(self):
+    def __init__(self, shared_context, event_bus):
         self.rapidapi_key = os.getenv('RAPID_API_KEY', '')
-        self.adzuna_app_id = os.getenv('ADZUNA_APP_ID', '')
-        self.adzuna_app_key = os.getenv('ADZUNA_APP_KEY', '')
+     
+        self.event_bus = event_bus
+        self.emitter = AgentEmitter("JobScraperAgent", self.event_bus)
+        self.shared_context = shared_context
 
         self.session = None
         self.rate_limits = {}  # Track rate limits
 
         self.source_priority = {
             'jsearch_api': 1,
-            'adzuna_api': 2
+            'remotive_api': 2
         }
 
     async def __aenter__(self):
-        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20))
+        import socket
+        connector = aiohttp.TCPConnector(family=socket.AF_INET, force_close=True)
+        self.session = aiohttp.ClientSession( connector=connector,timeout=aiohttp.ClientTimeout(total=20))
         return self
 
     async def __aexit__(self, *args):
@@ -38,48 +49,103 @@ class IntelligentJobScraper:
             await self.session.close()
 
     async def scrape_all_sources(
-        self, keywords: List[str], location: str = "Remote", max_results: int = 50
+        self, keywords: List[str],run_id: str, location: str = "Remote", max_results: int = 100, preferred_source="JSearch",
     ) -> List[Dict]:
         """Scrape using only real APIs, fallback if first fails."""
-
-        all_jobs = []
-        sources_tried = []
-        sources_succeeded = []
-
-        source_functions = [
-            (1, self.scrape_jsearch, "JSearch (Indeed/LinkedIn)"),
-            (2, self.scrape_adzuna, "Adzuna")
-        ]
-
-        # Sort by priority
-        source_functions.sort(key=lambda x: x[0])
-
-        for priority, func, name in source_functions:
-            sources_tried.append(name)
-            if self._is_rate_limited(name):
-                logger.warning(f"⏱️ {name} rate limited - skipping")
-                continue
+        with tracer.start_as_current_span("JobScraper.scrape_all_sources") as parent_span:
 
             try:
-                result = await asyncio.wait_for(func(keywords, location, max_results), timeout=15)
-                if result:
-                    all_jobs.extend(result)
-                    sources_succeeded.append(name)
-                    logger.info(f"✅ {name}: {len(result)} jobs")
-            except asyncio.TimeoutError:
-                logger.warning(f"⏱️ {name} timed out")
+                parent_span.set_attribute("keywords.count", len(keywords))
+                parent_span.set_attribute("scraper.location", location)
+                parent_span.set_attribute("preferred_source", preferred_source)
+
+
+                all_jobs = []
+                sources_tried = []
+                sources_succeeded = []
+
+                if preferred_source == "Remotive":
+                    source_functions = [
+                        (1, self.scrape_remotive, "Remotive"),
+                        # (2,  self.scrape_jsearch, "JSearch (Indeed/Linkedin)")
+                    ]
+                    logger.warning("Remotive Calling in Intelligent Scraper")
+                
+                elif preferred_source == "JSearch":
+                    source_functions = [
+                        (1, self.scrape_jsearch, "JSearch (Indeed/LinkedIn)"),
+                        # (2, self.scrape_remotive, "Remotive")
+                    ]
+                    logger.warning("JSearch API Calling inside intelligent Scraper")
+                
+                else:
+                    source_functions = [
+                        (1, self.scrape_jsearch, "JSearch (Indeed/Linkedin)"),
+                        # (2, self.scrape_remotive, "Remotive")
+                    ]
+                    logger.warning("Jsearch API Calling inside intelligent Scraper")
+
+                # Sort by priority
+                source_functions.sort(key=lambda x: x[0])
+
+                for priority, func, name in source_functions:
+                    sources_tried.append(name)
+                    if self._is_rate_limited(name):
+                        logger.warning(f"⏱️ {name} rate limited - skipping")
+                        continue
+
+                    try:
+                        result = await asyncio.wait_for(func(keywords, location, max_results), timeout=15)
+                        if result:
+                            all_jobs.extend(result)
+                            sources_succeeded.append(name)
+                            logger.info(f"✅ {name}: {len(result)} jobs")
+                        
+                            
+                    except asyncio.TimeoutError:
+                        logger.warning(f"⏱️ {name} timed out")
+                        await self.emitter.error(
+                                run_id,
+                                f"No jobs available right now on {name} for {keywords} and {location}"
+                            )
+                        await asyncio.sleep(3.0)
+
+                        await self.event_bus.emit({
+                            "type": "API_ERROR",
+                            "payload": {
+                                "run_id": run_id,
+                                "keywords": keywords,
+                                "location": location,
+                                "source": "brain1",
+                                "message": f"{name} Job search Api failed timedout"
+                            },
+                            "timestamp": datetime.now().isoformat()                   
+                        })
+
+
+                    except Exception as e:
+                        logger.warning(f"⚠️ {name} error: {str(e)[:100]}")
+                    # Stop if enough jobs
+                    if len(all_jobs) >= max_results:
+                        break
+
+                # Deduplicate
+                unique_jobs = self._deduplicate(all_jobs)
+                logger.info(f"Sources Tried: {sources_tried}, Succeeded: {sources_succeeded}")
+                logger.info(f"Total Jobs Found: {len(unique_jobs)}")
+
+
+                parent_span.set_attribute("scraper_engine.run_id", run_id)
+                parent_span.set_attribute("scraper_enginer", max_results)
+                parent_span.set_attribute("scraper_engine.output_jobs", len(unique_jobs))
+                parent_span.set_attribute("scraper_engine.sources_tried", ",".join (sources_tried))
+                parent_span.set_attribute("scrape_enginer.sources_succeeded", ",".join(sources_succeeded))
+                return unique_jobs[:max_results]
+            
             except Exception as e:
-                logger.warning(f"⚠️ {name} error: {str(e)[:100]}")
-
-            # Stop if enough jobs
-            if len(all_jobs) >= max_results:
-                break
-
-        # Deduplicate
-        unique_jobs = self._deduplicate(all_jobs)
-        logger.info(f"Sources Tried: {sources_tried}, Succeeded: {sources_succeeded}")
-        logger.info(f"Total Jobs Found: {len(unique_jobs)}")
-        return unique_jobs[:max_results]
+                parent_span.record_exception(e)
+                parent_span.set_status(Status(StatusCode.ERROR, str(e)))
+                return []
 
     # --------- Helpers ---------
 
@@ -137,65 +203,106 @@ class IntelligentJobScraper:
             'real_job': True
         }
 
-    # --------- JSearch ---------
+    # JSearch 
     async def scrape_jsearch(self, keywords: List[str], location: str, limit: int = 20) -> List[Dict]:
-        if not self.rapidapi_key:
-            return []
-        jobs = []
-        query = " ".join(keywords[:2])
-        url = "https://jsearch.p.rapidapi.com/search"
-        headers = {
-            "X-RapidAPI-Key": self.rapidapi_key,
-            "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
-        }
-        params = {"query": f"{query} {location}", "num_pages": "1"}
+            
+        with tracer.start_as_current_span("API.JSearch") as api_span:
+            start_jsearch_api = time.time()
 
-        async with self.session.get(url, headers=headers, params=params) as response:
+            try:
 
-            if response.status == 200:
-                data = await response.json()
-                for job in data.get('data', [])[:limit]:
-                    jobs.append(self._format_job(job, 'jsearch_api', {
-                        'title': job.get('job_title'),
-                        'company': job.get('employer_name'),
-                        'description': job.get('job_description',''),
-                        'location': job.get('city') or job.get('job_state') or job.get('job_country') or location or 'Remote',
-                        'salary': self._format_salary(job),
-                        'url': job.get('job_apply_link'),
-                        'job_type': job.get('job_employment_type')
-                    }))
-            elif response.status == 429:
-                self._set_rate_limit('jsearch_api', 3600)
-        return jobs
 
-    # --------- Adzuna ---------
-    async def scrape_adzuna(self, keywords: List[str], location: str, limit: int = 15) -> List[Dict]:
-        if not self.adzuna_app_id or not self.adzuna_app_key:
-            return []
-        jobs = []
-        query = " ".join(keywords[:2])
-        url = f"https://api.adzuna.com/v1/api/jobs/us/search/1"
-        params = {
-            "app_id": self.adzuna_app_id,
-            "app_key": self.adzuna_app_key,
-            "results_per_page": limit,
-            "what": query,
-            "where": location
-        }
+                if not self.rapidapi_key:
+                    api_span.set_attribute("JSEARCH.skipped", True )
+                    api_span.set_attribute("JSEARCH.reason", "missing_key")
+                    return []
 
-        async with self.session.get(url, params=params) as response:
-            if response.status == 200:
-                data = await response.json()
-                for job in data.get('results', []):
-                    jobs.append(self._format_job(job, 'adzuna_api', {
-                        'title': job.get('title'),
-                        'company': job.get('company', {}).get('display_name'),
-                        'description': job.get('description','')[:1000],
-                        'location': job.get('location', {}).get('display_name', location),
-                        'salary': self._format_salary_adzuna(job),
-                        'url': job.get('redirect_url')
-                    }))
-        return jobs
+                jobs = []
+                query = " ".join(keywords[:2])
+                url = "https://jsearch.p.rapidapi.com/search"
+                headers = {
+                    "X-RapidAPI-Key": self.rapidapi_key,
+                    "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
+                }
+                params = {"query": f"{query} {location}", "num_pages": "1"}
+
+                async with self.session.get(url, headers=headers, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        for job in data.get('data', [])[:limit]:
+                            jobs.append(self._format_job(job, 'jsearch_api', {
+                                'title': job.get('job_title'),
+                                'company': job.get('employer_name'),
+                                'description': job.get('job_description',''),
+                                'location': job.get('city') or job.get('job_state') or job.get('job_country') or location or 'Remote',
+                                'salary': self._format_salary(job),
+                                'url': job.get('job_apply_link'),
+                                'job_type': job.get('job_employment_type')
+                            }))
+                    elif response.status == 429:
+                        self._set_rate_limit('jsearch_api', 3600)
+                    
+                    api_span.set_attribute("api.jobs_returned", len(jobs))
+                    api_span.set_attribute("http.status_code", response.status)
+                    api_span.set_attribute("api.source", "Jsearch")
+                    return jobs
+            
+            except Exception as e:
+                logger.error(f"JSearch Api error: {str(e)}")
+                api_span.record_exception(e)
+                api_span.set_attribute("error", True)
+                return jobs
+            finally:
+                api_span.set_attribute("JSEARCH.latency_seconds", time.time() - start_jsearch_api)
+
+    # --------- Remotive ---------
+    async def scrape_remotive(self, keywords: List[str], location: str, limit: int = 15) -> List[Dict]:
+        with tracer.start_as_current_span("API.Remotive") as api_span:
+            start_remotive_api = time.time()
+
+            jobs = []
+            queries = keywords[:3]
+            url = f"https://remotive.com/api/remote-jobs"
+
+            try:
+                for q in queries:
+                    params = {
+                        "search": q
+                    }
+                    async with self.session.get(url, params=params) as response:
+                        logger.warning("Remotive Api Function Called")
+
+                        if response.status == 200:
+                            data = await response.json()
+                            job_list = data.get("jobs", [])
+
+                            logger.warning(f" Remotive Jobs List : {len(job_list)}")
+                            logger.warning(f"Remotive Sample Jobs {job_list[0].get('job_title') if job_list else 'No Jobs'}")
+
+                            for job in job_list[:limit]:
+                                jobs.append(self._format_job(job, 'remotive_api', {
+                                    'title': job.get('job_title') or job.get('title'),
+                                    'company': job.get('company_name') or job.get('employer_name') or 'unknown',
+                                    'description': job.get('job_description','')[:3000],
+                                    'location': job.get('candidate_required_location') or 'Remote',
+                                    'salary': job.get('salary') or self._format_salary(job),
+                                    'url': job.get('url')
+                                }))    
+                        else:
+                            logger.error(f"Remotive API Failed: {response.status}")
+                        
+                        api_span.set_attribute("api.jobs_returned", len(jobs))
+                        api_span.set_attribute("http.status_code", response.status )
+                        api_span.set_attribute("api.source", "Remotive")
+                        return jobs
+
+            except Exception as e:
+                logger.error(f"Remotive API Error: {str(e)}")
+                api_span.record_exception(e)
+                api_span.set_attribute("error", True)   
+                return jobs
+            finally:
+                api_span.set_attribute("REMOTIVE.latency_seconds", time.time() - start_remotive_api) 
 
     def _format_salary(self, job: Dict) -> str:
         min_sal = job.get('job_min_salary')

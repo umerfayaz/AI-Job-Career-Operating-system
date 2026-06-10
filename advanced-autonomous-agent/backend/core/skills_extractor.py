@@ -2,9 +2,12 @@
 Prifle NLP based skills extration and taxamony systems.
 """
 
+import os
 import spacy
 import re
-from typing import List, Dict, Tuple, Set, Any
+import json
+from groq import AsyncGroq
+from typing import List, Dict, Set, Any
 import structlog
 from collections import defaultdict
 logger = structlog.get_logger()
@@ -19,8 +22,12 @@ class SkillsExtractor:
         try:
           self.nlp = spacy.load("en_core_web_sm")
         except OSError:
-            logger.warning(f"Spacy model not found: Run: python -m spacy download em_core_web_sm")
+            logger.warning(f"Spacy model not found: Run: python -m spacy download en_core_web_sm")
             self.nlp =None
+        
+        # LLM For Roles 
+        self.llm_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        self.model = "llama-3.3-70b-versatile"
         
         ## Skills taxamony
         self.skills_taxonomy = self._build_skills_taxonomy()
@@ -150,18 +157,18 @@ class SkillsExtractor:
 
                         skills_info = {
                             'name':skill_name,
-                            'cateogory': category,
+                            'category': category,
                             'found_as': synonym,
                             'proficiency': proficiency
                         }
 
                         extracted['skills'].append(skills_info)
-                        extracted['categorized']['category'].append(skill_name)
+                        extracted['categorized'][category].append(skill_name)
                         extracted['proficiency_map'][skill_name] = proficiency
 
                         break
 
-        ## Removie Duplicates
+        ## Remove Duplicates
 
 
         seen =set()
@@ -182,7 +189,7 @@ class SkillsExtractor:
                         'name':skill,
                         'category': 'other',
                         'found_as': 'skill',
-                        'proficiency': 'intermidiate'
+                        'proficiency': 'intermediate'
                     })
         
         return extracted
@@ -249,6 +256,9 @@ class SkillsExtractor:
         """
         Compare resume skills vs job requirments
         """
+        critical_missing = []
+        nice_to_have_missing = []
+        matched = set()
 
         resume_skills_names = {s['name'] for s in resume_skills}
         job_skills_names = {s['name'] for s in job_skills}
@@ -263,11 +273,9 @@ class SkillsExtractor:
         else:
             matched_percentage = 0
 
-            critical_missing = []
-            nice_to_have_missing = []
         for skill in missing:
             job_skill = next((s for s in job_skills if s['name'] == skill), None)
-            if job_skill and job_skill.get('category') in ['programming_laguages', 'frontend', 'backend']:
+            if job_skill and job_skill.get('category') in ['programming_languages', 'frontend', 'backend']:
                 critical_missing.append(skill)
             else:
                 nice_to_have_missing.append(skill)
@@ -336,14 +344,97 @@ class SkillsExtractor:
         if frontend_skills and ('html' in by_category.get('frontend', []) or 'css' in by_category.get('frontend', [])):
             for skill in frontend_skills:
                 if skill not in ['html', 'css']:
-                    relationships['require'].append(skill, 'html')
-                    relationships['require'].append(skill, 'css')
+                    relationships['require'].append((skill, 'html'))
+                    relationships['require'].append((skill, 'css'))
         
         return {
             'category': dict(by_category),
             'relationships': relationships,
-            'skill_count_by _category': {cat: len(skills) for cat, skills in by_category.items()}
+            'skill_count_by_category': {cat: len(skills) for cat, skills in by_category.items()}
         }
+
+    async def fallback_roles(self, skills: list):
+        skill_set = set([s.lower() for s in skills])
+
+        # light inference only (NOT full domain AI)
+        if any(s in skill_set for s in ["python", "react", "fastapi", "django", "node"]):
+            return ["software engineer"]
+
+        if any(s in skill_set for s in ["seo", "ads", "marketing", "content"]):
+            return ["marketing specialist"]
+
+        if any(s in skill_set for s in ["excel", "finance", "accounting"]):
+            return ["finance analyst"]
+
+        # LAST RESORT ONLY
+        return ["professional"]
+
+    async def generate_base_roles_llm(self, resume_text: str, skills: list):
+
+        prompt = f"""
+    You are a career classification AI.
+
+    Your task:
+    Convert a candidate profile into 3–6 realistic job titles.
+
+    STRICT RULES:
+    - Output ONLY valid JSON
+    - No explanations
+    - No extra text
+    - No markdown
+    - No duplicates
+    - Keep roles realistic and industry-standard
+    - Do NOT generate keywords or skill lists
+
+    INPUT:
+
+    Resume:
+    {resume_text}
+
+    Skills:
+    {skills}
+
+    OUTPUT FORMAT:
+    {{
+    "base_roles": [
+        "role 1",
+        "role 2",
+        "role 3"
+    ]
+    }}
+    """
+
+        try:
+            response = await self.llm_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You output only strict JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2
+            )
+
+            content = response.choices[0].message.content.strip()
+
+            data = json.loads(content)
+
+            roles = data.get("base_roles", [])
+
+            # safety cleanup
+            roles = list(set([r.strip().lower() for r in roles if r]))
+
+            if not roles:
+                logger.warning("LLM returned empty roles, fallback triggered in Skill Extractor")
+                return await self.fallback_roles(skills)
+
+            return roles
+
+        except Exception as e:
+            logger.warning("Base roles LLM failed", error=str(e))
+
+            # fallback (VERY IMPORTANT)
+            logger.warning("LLM Failed, fallback triggered in Skill Extractor")
+            return await self.fallback_roles(skills)
 
         
 

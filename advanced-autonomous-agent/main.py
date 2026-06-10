@@ -4,11 +4,7 @@ from datetime import datetime
 from langchain_groq import ChatGroq
 from backend.agent.graph import AgentGraph
 from backend.agent.nodes import AgentNodes
-from backend.agent.autonomous_planner import AutonomousPlanner
-from backend.agent.goal_manager import GoalManager
-from backend.agent.self_improvement import SelfImprovementController
 from backend.application import AgentApplication
-from backend.agent.orchestrator import AgentOrchestrator
 from backend.config.settings import Settings
 import structlog
 
@@ -34,7 +30,7 @@ async def run_agentic_task():
 
     mcp_servers = {
         'web_search': WebSearchMCPServer(),
-        'database': DataMCPServer(db_path= settings.CHROMA)
+        'database': DataMCPServer(db_path= settings.CHROMA_PATH)
     }
 
 

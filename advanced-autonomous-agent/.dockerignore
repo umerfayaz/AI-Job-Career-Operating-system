@@ -1,0 +1,41 @@
+ Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# model cache file
+model_cache
+
+# Environment variables
+.env
+.env.*
+*.env
+
+react-frontend/node_modules/
+react-frontend/src/node_modules/
+
+data/
+chroma/
+chroma_db/
+*.sqlite3
+
+brain4/
+
+# Google Service Account (do not upload)
+gmail_service_account.json
+
+# Node (if frontend exists)
+node_modules/
+
+# OS caches
+.DS_Store
+Thumbs.db
+

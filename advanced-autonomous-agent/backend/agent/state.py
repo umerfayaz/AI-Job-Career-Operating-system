@@ -16,9 +16,10 @@ class AgentState(TypedDict):
     task_type:str
     task_id:str
     priorities:int
-
+    run_id: str
+    workflow_type: Optional[str]
     ### Reasoning chain
-    plan: List[str]
+    plan: Annotated[list[str], operator.add]
     current_step: int
     reasoning_history: Annotated[List[Dict], operator.add]
 
@@ -38,7 +39,7 @@ class AgentState(TypedDict):
     ## Mmeory & content
 
     relevant_memories: List[Dict]
-    enitity_content: Dict
+    entity_context: Dict
     conversation_history: Annotated[List[Dict], operator.add]
 
 
@@ -46,21 +47,21 @@ class AgentState(TypedDict):
 
     confidence_score: float
     validation_results: Dict
-    errors: Annotated[List[str], operator.add]
+    errors: Annotated[List[Dict], operator.add]
     retry_count: int
 
 
    # Output
 
 
-    final_output: Optional[str]
+    final_output: str
     artifacts: Annotated[List[Dict], operator.add]
 
 
    #  Meta
 
     iteration: int
-    max_iteration: int
+    max_iterations: int
     started_at: datetime
     status:str
 
@@ -73,15 +74,14 @@ class AgentState(TypedDict):
     job_keywords: List[str]
     job_location: Optional[str]
     experience_level: Optional[str]
-    scarepd_jobs_raw: Annotated[List[Dict], operator.add]
+    scraped_jobs_raw: Annotated[List[Dict], operator.add]
 
   # Job Data
-    jobs_data: Annotated[List[Dict], operator.add]
+    jobs_data: list[Dict]
     matched_jobs: List[Dict]
 
   # User Information
     user_email: Optional[str]
-    user_id: Optional[str]
 
   # Quality check
     quality_check: Dict
@@ -89,8 +89,8 @@ class AgentState(TypedDict):
 
   # Report Generation
     report_data: Dict
-    final_report: Optional[str]
-    pdf_path: Optional[str]
+    final_report: str 
+    pdf_path: str
 
   ## Memory & RAG Fields
     user_id: Optional[str]
@@ -117,7 +117,7 @@ class AgentState(TypedDict):
     routing_history: List[Dict]
     ranking_adjustments: Dict
     deep_skill_extraction: bool
-    enable_alterbative_sources: bool
+    enable_alternative_sources: bool
     learning_completed: bool
     last_executed_node: Optional[str]
    

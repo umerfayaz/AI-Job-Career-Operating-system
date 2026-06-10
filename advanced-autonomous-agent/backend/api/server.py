@@ -1,73 +1,112 @@
-"""
- Running BOTH Brains Together
-
-- Starts both Brain 1 (LangGraph) and Brain 2 (Multi-agents) together
-- They share data through the unified application
-- API endpoints work with both systems
-- No code duplication or conflicts
-
-"""
-
 import os
 import fitz
 import docx
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
-from pydantic import BaseModel
-from typing import Dict, Optional
+import asyncio
+import time
 import uvicorn
 import structlog
+from pathlib import Path
+from fastapi.responses import RedirectResponse
+from backend.observability.tracer import tracer
+from opentelemetry.trace import Status, StatusCode
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
+from pydantic import BaseModel
+from backend.narration.emitter import AgentEmitter
+from threading import Lock
+from backend.core.email_verification import( verification_codes, 
+    store_unverified_email, 
+    send_verification_code, 
+    generate_verification_code,
+    verify_email_code
+)
+from backend.LLMClient.lmc_client import LMCClient
+from fastapi import WebSocket, WebSocketDisconnect, APIRouter
+from typing import Dict, Optional
 from backend.multiagents.guardrails import JobReportGuardrails
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
-import asyncio
-
-from backend.application import AgentApplication
+from datetime import datetime, timedelta
+from backend.observability.opentelemetry import setup_observability
+from backend.core.stage_event import EmitStage
+from backend.core.event_bus import get_event_bus
+from backend.application import get_agent_app  
+from backend.postgreSQL.init_db import init_db                  
 from backend.core.email_sender import EmailSender
 from backend.tools.pdf_generator import PDFGenerator
+from backend.redis.redis_memory import redis_client
+from backend.auth.auth_routes import get_current_user, router as auth_router
+from backend.brain_outcomeLoop.profile_resolver import active_search_profile_key
+from backend.observability.workflow_metrics import WorkflowMetrics
+from  backend.observability.workflow_instance import metrics_collector
 
 logger = structlog.get_logger()
 
-# Global unified application
-agent_app = AgentApplication(agentic_mode=True, autonomous_24_7=True)
-email_sender = EmailSender()
-guardrails = JobReportGuardrails()
-pdf_generator = PDFGenerator()
+# Importing Trunstile key
+TURNSTILE_SECRET= os.getenv("TURNSTILE_SECRET_KEY")
 
+# Global unified application
+email_sender = EmailSender()
+event_bus = get_event_bus()
+guardrails = JobReportGuardrails()
+emit_stage = EmitStage()
+pdf_generator = PDFGenerator()
+pending_workflows: dict = {}
+workflow_lock = Lock()
+router = APIRouter()
+llm_client = LMCClient()
+
+
+user_registry = None
 
 # LIFESPAN - Start BOTH Brains Together
+async def cleanup_old_workflows():
+    while True:
+        await asyncio.sleep(300)
+        now = datetime.now()
 
+        with workflow_lock:
+            expired = [
+                task_id for task_id, workflow in pending_workflows.items()
+                if (now - workflow["initial_state"]["started_at"]) > timedelta(hours=1)
+            ]
+
+            for task_id in expired:
+                pending_workflows.pop(task_id, None)
+                logger.info(f" Cleaned Expired workflow:{task_id}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    - Brain 1: LangGraph (for API workflows)
-    - Brain 2: Multi-agents (for 24/7 monitoring)
-    """
     logger.info("=" * 60)
     logger.info(" STARTING UNIFIED SYSTEM")
     logger.info("=" * 60)
+
+    global user_registry 
+
+    tracer = setup_observability(app)
+    app.state.tracer = tracer
+    logger.info("Tracer initialized")
+
+    await init_db()
+
+    agent_app = await get_agent_app()
+    await agent_app.start_autonomous_system()
     
-    # Initializing the unified application (both brains)
-    await agent_app.initialize()
-    
-    # Starting Brain 2 (multi-agent system) in background
-    logger.info(" Starting Brain 2 (24/7 Multi-Agents) in background...")
-    orchestrator_task = asyncio.create_task(agent_app.start_autonomous_system())
-    
+    asyncio.create_task(cleanup_old_workflows())
+
     logger.info("=" * 60)
     logger.info(" UNIFIED SYSTEM READY")
     logger.info("   Brain 1 (LangGraph): Ready for API requests")
     logger.info("   Brain 2 (Multi-Agents):  Running 24/7")
     logger.info("   Integration:  Connected")
     logger.info("=" * 60)
-    
+
     try:
-        yield  # API runs here
+        yield
     finally:
         logger.info(" Shutting down unified system...")
         await agent_app.shutdown()
         logger.info(" Shutdown complete")
+
 
 
 app = FastAPI(
@@ -77,6 +116,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Merging Auth frontend Router with Api file 
+app.include_router(auth_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -85,9 +127,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # MODELS
-
 class TaskRequest(BaseModel):
     task: str
     task_id: str
@@ -131,8 +171,19 @@ def extract_text_from_file(file_path: str, filename: str) -> str:
     else:
         raise ValueError(f"Unsupported file format: {filename}")
 
+# API Endpoint Specially for tasks stats updates for frontend
+@app.get("/stats")
+async def get_stats(user_id: str = Depends(get_current_user)):
 
-# API ENDPOINTS - Basic
+    tasks = await redis_client.get(f"user:{user_id}:tasks_completed")
+    jobs = await redis_client.get(f"user:{user_id}:jobs_matched")
+    reports = await redis_client.get(f"user:{user_id}:reports_generated") 
+
+    return {
+        "tasks_completed": int(tasks) if tasks else 0,
+        "jobs_matched": int(jobs) if jobs else 0,
+        "reports_generated": int(reports) if reports else 0,
+    }
 
 
 @app.get("/")
@@ -147,36 +198,62 @@ async def root():
         }
     }
 
+@app.get("/apply")
+async def apply_jobs(job_id: str, user_id: str =  Depends(get_current_user)):
 
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "system_status": agent_app.get_system_status()
-    }
+    try:
+        logger.info(f"Apply endpoint called {job_id} {user_id}")
+        with tracer.start_as_current_span("api.job_apply") as span:
+            start_apply = time.time()
+
+            agent_app = await get_agent_app()
+
+            # Tracing Job and User IDs
+            span.set_attribute("job.id", job_id )
+            span.set_attribute("user.id", user_id)
+
+            job = await agent_app.memory.get_job_by_id(job_id, user_id)
+
+            if not job:
+                logger.error(f"Job not found {job_id} for {user_id}")
+                raise HTTPException(404, "No job found")
+            
+            metadata = job.get("metadata", {})
+
+            real_job_url = metadata.get("url", "")
+
+            if not real_job_url or real_job_url == None:
+                logger.error(f"No url for job {job_id}")
+                raise HTTPException(404, "No url found for this job")
+            
+            await agent_app.multi_agent_orchestrator.outcome_database.track_application(
+                job_id=job_id,
+                user_id=user_id,
+                job_metadata=metadata
+            )
+
+            await event_bus.emit({
+                "type": "JOB_APPLIED",
+                "user_id": user_id,
+                "job_id":job_id,
+                "job_metadata": metadata,
+                "timestamps": datetime.now().isoformat()
+            })
 
 
+            logger.info(f" Redirecting to: {real_job_url}")
 
+            return RedirectResponse(url=real_job_url, status_code=303)
+        
+    except HTTPException:
+        raise
 
-@app.post("/task", response_model=TaskResponse)
-async def create_task(request: TaskRequest, background_tasks: BackgroundTasks):
-    """Create a Task for the Autonomous Agent"""
-    task_id = f"{request.task_id}_{int(datetime.now().timestamp())}"
-    print(f"📥 Received task: {task_id}")
-
-    # Schedule agent task in the background
-    background_tasks.add_task(
-        execute_agent_task,
-        task_id=task_id,
-        task_data=request.dict()
-    )
-
-    return TaskResponse(
-        task_id=task_id,
-        status="queued",
-        message="Task submitted successfully"
-    )
+    except Exception as e:
+        logger.error(f"apply endpoint error: {e}", exc_info=True)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        raise HTTPException(500, f"Failed to process application{str(e)}")
+    finally:
+        span.set_attribute("llm.latency_seconds", time.time() - start_apply)
 
 
 @app.get("/task/{task_id}", response_model=TaskStatusResponse)
@@ -188,358 +265,864 @@ async def get_task_status(task_id: str):
         result=None
     )
 
-
-# JOB MATCHING ENDPOINTS - Uses BOTH Brains
+@app.get("/test/event-bus-status")
+async def test_event_bus_status():
+    eb = get_event_bus()
+    return {
+        "connected_clients": len(eb.connections),
+        "queues": [str(q) for q in eb.connections],
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.post("/resume/upload")
 async def upload_resume(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
     user_email: Optional[str] = Form(None),
     keywords: Optional[str] = Form(""),
+    resume_id: Optional[str] = Form(None),
     location: Optional[str] = Form("Remote"),
-    experience_level: Optional[str] = Form("mid")
+    experience_level: Optional[str] = Form("mid"),
 ):
     """
-    Upload resume and trigger job matching
-    
+    Upload resume and trigger automatic job matching + email reports
     """
     try:
+        with tracer.start_as_current_span("api.resume_upload") as parent_span:
+            start_resume = time.time()
 
-        job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
+            # Starting workflow after Capctha verification
+            agent_app = await get_agent_app()
 
-        can_proceed, reason = await guardrails.check_can_proceed(
-            "fetched_jobs",
-            {"keywords_count": len(job_keywords)}
-        )
+            # Validate file type
+            if not file.filename.endswith(('.pdf', '.docx', '.txt')):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Only PDF, DOCX, and TXT files are supported"
+                )
+            
+            job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
 
-        if not can_proceed:
-           raise  HTTPException(
-            statue_code = 429,
-            detail=f"Rate Limit: {reason}"
-           )
+            # Rate limiting
+            can_proceed, reason = await guardrails.check_can_proceed(
+                "fetched_jobs",
+                {"keywords_count": len(job_keywords)}
+            )
 
-        task_id = f"resume_{int(datetime.now().timestamp())}"
-        resume_id = f"resume_{task_id}"
+            if not can_proceed:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Rate Limit: {reason}"
+                )
 
-        logger.info(f"📄 Received resume: {file.filename}")
+            task_id =f"task_{int(datetime.now().timestamp())}"
+            resume_id =f"resume_{task_id}"
 
-        # Save file
-        os.makedirs("temp", exist_ok=True)
-        file_path = f"temp/{resume_id}_{file.filename}"
+            logger.info(f" Received resume: {file.filename}")
 
-        with open(file_path, "wb") as f:
+            # Save file
+            safe_path = Path(file.filename).name
+            file_path = f"temp/{resume_id}_{safe_path}"
+
+            MAX_FILE_SIZE = 30 * 1024 * 1024
             content = await file.read()
-            f.write(content)
 
-        # Extract text
-        resume_text = extract_text_from_file(file_path, file.filename)
-        logger.info(f"   Extracted {len(resume_text)} characters")
-
-        # Prepare state for Brain 1 (LangGraph workflow)
-        initial_state = {
-            "task": "Find and match job opportunities for uploaded resume",
-            "task_type": "job_matching",
-            "task_id": task_id,
-            "priority": 5,
-            "resume_text": resume_text,
-            "resume_id": resume_id,
-            "job_keywords": job_keywords,
-            "job_location": location,
-            "experience_level": experience_level,
-            "user_email": user_email,
-            "user_id": f"_{task_id}",
+            if len(content) > MAX_FILE_SIZE:
+                raise HTTPException(400, "File is to large")
+            with open(file_path, "wb") as f:
+                f.write(content)  
             
-            # Standard fields
-            "plan": [],
-            "current_step": 0,
-            "reasoning_history": [],
-            "search_queries": [],
-            "search_results": [],
-            "scraped_content": [],
-            "extracted_insights": [],
-            "analysis_results": {},
-            "relevant_memories": [],
-            "entity_context": {},
-            "conversation_history": [],
-            "confidence_score": 0.0,
-            "validation_results": {},
-            "errors": [],
-            "retry_count": 0,
-            "final_output": None,
-            "artifacts": [],
-            "iteration": 0,
-            "max_iteration": 10,
-            "started_at": datetime.now(),
-            "status": "running",
+            run_id = f"run{resume_id}_{int(datetime.now().timestamp())}"     
+
+            resume_text = extract_text_from_file(file_path, file.filename)
+            logger.info(f"   Extracted {len(resume_text)} characters")
+
+            import re
+
+            def normalize_resume_text(text: str) -> str:
+                text = text.replace("\n", " ")
+                text = text.replace("\r", " ")
+                text = re.sub(r"\s+", " ", text)
+                return text
+
+            def extract_email_from_resume(text: str):
+                text = normalize_resume_text(text)
+
+                pattern = re.compile(
+                    r'[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,}',
+                    re.IGNORECASE
+                )
+
+                match = pattern.search(text)
+                if not match:
+                    return None
+
+                # remove spaces introduced by PDF extraction
+                email = re.sub(r"\s+", "", match.group())
+                return email
+
+            extracted_email = extract_email_from_resume(resume_text)
+
+            if extracted_email:
+                email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+                if not re.match(email_regex, extracted_email):
+                    logger.info(f"Invalid email extracted from {extracted_email}")
+                    extracted_email =  None
+            logger.info(f" Extracted email: {extracted_email if extracted_email else 'None (will use default)'} ")
+
+            if extracted_email:
+                verification_code = generate_verification_code()
+
+                await store_unverified_email(
+                    task_id = f"{task_id}",
+                    email=extracted_email,
+                    verification_code=verification_code
+                )
+                    
+                await send_verification_code(extracted_email, verification_code, task_id)
+
+                prompt = f"""
+            A user uploaded a resume. 
+    The extracted email is: {extracted_email if extracted_email else 'None'}.
+    If it's invalid, explain in a friendly, step-by-step way what the user should do next.
+    If it's valid, congratulate them and mention that a verification code will be sent.
+    Return the message in natural human-like language suitable for chat display.
+            """
+
+            with tracer.start_as_current_span("llm.call") as llm_span:
+                llm_start = time.time()
+                llm_span.set_attribute("llm.model",  "openai/gpt-oss-120b")
+
+                response = llm_client.client.chat.completions.create(
+                    model =  llm_client.model,
+                    messages =[{"role": "user", "content": prompt}]
+                )
+
+                llm_span.set_attribute("llm.latency_seconds", time.time() - llm_start)
+
+                usage = getattr(response, "usage", 0)
+
+                if usage:
+                    llm_span.set_attribute("llm.prompt", prompt[:500])
+                    llm_span.set_attribute("llm.prompt_tokens", getattr(usage, "prompt_tokens", 0))
+                    llm_span.set_attribute("llm.completion_tokens", getattr(usage, "completion_tokens", 0))
+                    llm_span.set_attribute("llm.total_tokens", getattr(usage, "total_tokens", 0))
+
+                    total_tokens = getattr(usage, "total_tokens", 0)
+                    MODEL_COSTS = {
+                        "openai/gpt-oss-120b": 0.0001
+                    }
+                    cost = (total_tokens / 1000) * MODEL_COSTS.get("openai/gpt-oss-120b")
+
+                    llm_span.set_attribute("llm.total_estimated_cost_usd", cost)
+
+                narration_messages = response.choices[0].message.content
+
+                emitter = AgentEmitter(agent_name="ResumeController", event_bus=event_bus)
+
+                await event_bus.emit(
+                    event= {
+                    "event_type":"ui.verification.show",
+                    "email_detected": extracted_email
+                    }
+                )
+                email_valid = extracted_email is not None
+
+                if not email_valid:
+                    await event_bus.emit(
+                        event= {
+                        "event_type":"ui.chat.show",
+                        "message": narration_messages
+                        }
+                    )   
+
+                await emitter.progress(run_id=task_id, message=narration_messages)
+
+
+                logger.info(f" Verification code sent to email {extracted_email}")
+
+            final_email = user_email or extracted_email
             
-            # Job-specific fields
-            "jobs_data": [],
-            "matched_jobs": [],
-            "quality_check": {},
-            "email_status": {},
-            "report_data": {},
-            "final_report": None,
-            "pdf_path": None
-        }
+            if not final_email:
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "Email required",
+                        "message": "Please provide an email or include it in your resume"
+                    }
+                )
+            
+            email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_regex, final_email):
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid email format: {final_email}"
+                )
 
-        config = {"configurable": {"thread_id": task_id}}
+            logger.info(f" Email validated: {user_email}")
 
-        logger.info(f"🎯 Starting unified workflow: {task_id}")
+              # Observability and tracking of uploaded resume 
+            parent_span.set_attribute("file.name", file.filename)
+            parent_span.set_attribute("resume.user_id", user_id)
+            parent_span.set_attribute("resume.run_id", run_id)
+            parent_span.set_attribute("resume.job_keywords", len(job_keywords))
+            parent_span.set_attribute("resume.user_email", user_email)
 
-        # Run in background using unified application
-        background_tasks.add_task(
-            execute_unified_job_matching,
-            task_id=task_id,
-            initial_state=initial_state,
-            config=config
-        )
+            if agent_app.multi_agent_orchestrator:
+                await agent_app.multi_agent_orchestrator.shared_context.write(
+                    f"current_run_id_{user_id}",
+                    run_id,
+                    "WorkFlowController"
+                )
+                logger.warning(f" Current run id created in resume upload endpoint {run_id}")
 
-        # Clean up temp file
-        try:
-            os.remove(file_path)
-        except:
-            pass
-
-        await guardrails.record_action("fetched_jobs")
-
-        return {
-            "success": True,
-            "task_id": task_id,
-            "message": "Resume uploaded. Dual-brain system processing...",
-            "status_endpoint": f"/task/{task_id}",
-            "brains_active": {
-                "langgraph": True,
-                "multi_agents": True
+            # Prepare state
+            initial_state = {
+                "task": "Find and match job opportunities for uploaded resume",
+                "task_type": "job_matching",
+                "workflow_type": "frontend_workflow",
+                "task_id": task_id,
+                "priority": 5,
+                "resume_text": resume_text,
+                "resume_id": resume_id,
+                "job_keywords": job_keywords,
+                "job_location": location,
+                "experience_level": experience_level,
+                "run_id": run_id,
+                "user_email": user_email or extracted_email,  
+                "user_id": user_id,
+                
+                "plan": [],
+                "current_step": 0,
+                "reasoning_history": [],
+                "search_queries": [],
+                "search_results": [],
+                "scraped_content": [],
+                "extracted_insights": [],
+                "analysis_results": {},
+                "relevant_memories": [],
+                "entity_context": {},
+                "conversation_history": [],
+                "confidence_score": 0.0,
+                "validation_results": {},
+                "errors": [],
+                "retry_count": 0,
+                "final_output": None,
+                "artifacts": [],
+                "iteration": 0,
+                "max_iteration": 10,
+                "started_at": datetime.now(),
+                "status": "running",
+                "jobs_data": [],
+                "matched_jobs": [],
+                "quality_check": {},
+                "email_status": {},
+                "report_data": {},
+                "final_report": None,
+                "pdf_path": None
             }
-        }
 
+            config = {
+                "configurable": {"thread_id": task_id}
+            }
+
+            with workflow_lock:
+                pending_workflows[task_id] = {
+                    "initial_state": initial_state,
+                    "config": config,
+                    "run_id": run_id
+                }
+
+            try:
+                os.remove(file_path)
+            except:
+                pass
+
+            await guardrails.record_action("fetched_jobs")
+
+            return {
+                "success": True,
+                "task_id": task_id,
+                "run_id": run_id,
+                "message": "Resume uploaded successfully! You'll receive an email report when matching is complete.",
+                "email": user_email,
+                "email_source": "extracted" if extracted_email else "provided",
+                "notification": f"Report will be sent to {user_email}",
+                "status_endpoint": f"/task/{task_id}",
+                "status": "verification_pending",
+                "verification_required": True,
+                "brains_active": {
+                    "langgraph": True,
+                    "multi_agents": True
+                }
+            }
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Upload error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        parent_span.set_status(Status(StatusCode.ERROR, str(e)))
+        raise HTTPException(status_code=500, detail="Internal server error. Please Try again later")
+    finally:
+        parent_span.set_attribute("resume.latency_seconds", time.time() - start_resume)
+
+active_websocket_connections = {}
+
+@app.websocket("/ws/events")
+async def websockets_events(websocket: WebSocket):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    connection_id = id(websocket)
+    
+ 
+    existing_conn_info = active_websocket_connections.get(client_ip)
+    if existing_conn_info:
+        existing_id = existing_conn_info.get("id")
+        existing_ws = existing_conn_info.get("ws")
+        last_activity = existing_conn_info.get("timestamp", 0)
+        time_since_activity = time.time() - last_activity
+    
+        if time_since_activity < 30 and existing_id != connection_id:
+            logger.warning(f"Rejecting duplicate connection from {client_ip} (existing connection is still active)")
+            await websocket.close(code=1008, reason="Another connection already exists")
+            return
+        else:
+   
+            logger.info(f"Replacing stale connection from {client_ip} (inactive for {time_since_activity:.1f}s)")
+            try:
+                await existing_ws.close(code=1000, reason="Replaced by new connection")
+            except Exception as close_error:
+                logger.debug(f"Error closing stale connection: {close_error}")
+            if client_ip in active_websocket_connections:
+                del active_websocket_connections[client_ip]
+    
+    # Accept the new connection
+    await websocket.accept()
+    active_websocket_connections[client_ip] = {
+        "id": connection_id,
+        "ws": websocket,
+        "timestamp": time.time()
+    }
+    logger.info(f"WebSocket connected: {client_ip} -> {connection_id} (Total clients: {len(active_websocket_connections)})")
+    
+    queue = await event_bus.connect()
+
+    try:
+        await websocket.send_json({
+            "type": "connection",
+            "status": "connected",
+            "timestamp": datetime.now().isoformat(),
+            "message": "🤖 Connected to AI Career Assistant"
+        })
+        
+        active_websocket_connections[client_ip]["timestamp"] = time.time()
+
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=30)  
+                
+                await websocket.send_json(event)
+                active_websocket_connections[client_ip]["timestamp"] = time.time()
+                    
+            except asyncio.TimeoutError:
+        
+                try:
+                    await websocket.send_json({"type": "ping"})
+                    active_websocket_connections[client_ip]["timestamp"] = time.time()
+                except Exception:
+                    logger.warning(f"Ping failed for {client_ip}, connection likely dead")
+                    break
+                continue
+                
+            except Exception as e:
+                logger.error(f"Event processing error: {e}")
+                break  
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket Client Disconnected: {connection_id}")
+    
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}", exc_info=True)
+    
+    finally:
+        conn_info = active_websocket_connections.get(client_ip)
+        if conn_info and conn_info.get("id") == connection_id:
+            del active_websocket_connections[client_ip]
+            logger.info(f"WebSocket cleanup: {client_ip} -> {connection_id} (Remaining clients: {len(active_websocket_connections)})")
+        
+        await event_bus.disconnect(queue)
+
+@app.post('/resume/verify-email')
+async def verify_email(task_id: str = Form(...), code: str =Form(...), user_id: str = Depends(get_current_user)):
+    logger.warning(f"DEBUG task_id={task_id}, code={code}")
+
+    agent_app = await get_agent_app()
+
+    success, message = verify_email_code(task_id, code)
+
+    if not success:
+        return {
+            "success": False,
+            "error": message
+        }
+    
+    verification_codes[task_id]["verified"] = True
+    verified_email = verification_codes[task_id]["email"]
+
+    try:
+         existing_prefs = agent_app.memory.preferences_collection.get(ids=[user_id])
+
+         if existing_prefs and existing_prefs.get("ids"):
+            existing_meta = existing_prefs["metadatas"][0]
+            existing_meta["email_verified"] = True
+            existing_meta["verified_at"] = datetime.now().isoformat()
+
+            agent_app.memory.preferences_collection.update(
+                ids=[user_id],
+                metadatas=[existing_meta]
+            )
+
+            logger.info(f"Updated Preferences verified: emails Verified: {user_id}")
+         else:
+            agent_app.memory.preferences_collection.add(
+                ids=[user_id],
+                documents=[f" User Preference for {verified_email}"],
+                metadatas=[{
+                    "user_id": user_id,
+                    "email": verified_email,
+                    "email_verified": True,
+                    "verified_at": datetime.now().isoformat()
+                }]
+            )
+            logger.info(f" Created Preferences: email verified for {user_id}")
+    
+    except Exception as e:
+        logger.info(f"Failed to update preferences {e}", exc_info=True)
+    
+    workflow = pending_workflows.get(task_id)
+
+    if not workflow:
+        logger.error(f" No workflow found for task {user_id}")
+        return {
+            "success": False,
+            "error": "workflow not found or expired"
+        } 
+    run_id = (
+        workflow.get("run_id") or
+        workflow["initial_state"].get("run_id")
+    )
+
+    if not run_id:
+        logger.error(f"No run_id found for task {user_id}")
+        return {
+            "success": False,
+            "error": "Internal run context missing"
+        }
+    
+    logger.warning(f"Email Verified. Starting workflow for {user_id}")
+
+    if agent_app.multi_agent_orchestrator:
+         await agent_app.multi_agent_orchestrator.shared_context.write(
+            key = f"new_resume_upload_{user_id}",
+            value={
+                "remaining_cycles": 3,
+                "user_id": user_id,
+                "email": verified_email,
+                "workflow_type": "frontend_workflow",
+                "source": "email_verification",
+                "timestamp": datetime.now().isoformat()
+            },
+            agent_name="resume_api"
+        )
+
+    config = {
+        "configurable": {"thread_id":run_id}
+    }
+
+    agent_app.safe_runner.create_task(
+        name = f"retry_workflow{user_id}",
+        coro = execute_unified_job_matching(
+            task_id=task_id,
+            initial_state=workflow["initial_state"],
+            config=config
+        ),
+        severity= "critical"
+    )
 
 
-
-# BACKGROUND TASK - Unified Workflow
+    return {
+        "success": True,
+        "message": "Email verified Processing Your resume now",
+        "task_id": task_id
+    }
 
 async def execute_unified_job_matching(task_id: str, initial_state: dict, config: dict):
     """
     Execute job matching using the unified application
-    
     """
-    try:
-        logger.info(f" Starting unified job matching: {task_id}")
-        
-        # Run through unified application (handles both brains)
-        result = await agent_app.run_langgraph_workflow(initial_state, config)
-        
-        logger.info(f" Unified workflow completed: {task_id}")
-        logger.info(f"   Jobs found: {len(result.get('jobs_data', []))}")
-        logger.info(f"   Matches: {len(result.get('matched_jobs', []))}")
-        logger.info(f"   Confidence: {result.get('confidence_score', 0):.2%}")
-        
-        # Generate and send report
-        report_content = result.get('final_report') or result.get('final_output', '')
-
-        if report_content and result.get('user_email'):
-            logger.info(f"📧 Sending report to: {result.get('user_email')}")
-
-            # Generate PDF
-            pdf_path = pdf_generator.markdown_to_pdf(
-                markdown_content=report_content,
-                filename=f"job_matches_{task_id}" 
-            )
-
-            # Create email
-            email_body = f"""
-            <html>
-            <head>
-                <style>
-                    body {{ font-family: Arial, sans-serif; }}
-                    .header {{ background: #4CAF50; color: white; padding: 20px; }}
-                    .job {{ background: #f9f9f9; padding: 10px; margin: 10px 0; }}
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h1>🎯 Your Job Matches Are Ready!</h1>
-                    <p>Powered by Dual-Brain AI System</p>
-                </div>
-                <p>We found {len(result.get('matched_jobs', []))} opportunities matching your profile.</p>
-                <h3>Top Matches:</h3>
-            """
-            
-            for i, job in enumerate(result.get('matched_jobs', [])[:5], 1):
-                email_body += f"""
-                <div class="job">
-                    <strong>{i}. {job.get('title', 'Position')}</strong><br>
-                    Company: {job.get('company', 'N/A')}<br>
-                    Match: {job.get('match_percentage', 0):.0f}%<br>
-                    Location: {job.get('location', 'N/A')}
-                </div>
-                """
-            
-            email_body += """
-                <p>📎 Full report attached as PDF.</p>
-                <p><small>🧠 Processed by LangGraph + Multi-Agent System</small></p>
-            </body>
-            </html>
-            """
-
-            email_sender.send_report(
-                subject=f"{len(result.get('matched_jobs', []))} Job Matches Found",
-                body=email_body,
-                pdf_path=pdf_path
-            )
-
-            logger.info(f" Email sent successfully")
-
-        return result
-    
-    except Exception as e:
-        logger.error(f"Unified workflow failed: {task_id} - {e}", exc_info=True)
-
-
-
-async def execute_agent_task(task_id: str, task_data: Dict):
-    """Execute Agent Task via AgentApplication"""
-    try:
-        print(f" Executing task {task_id}")
-        print(f" Task data: {task_data}")
-
-        # Prepare initial state for LangGraph
-        initial_state = {
-            "task": task_data.get("task", ""),
-            "task_type": task_data.get("config", {}).get("task_type", "custom"),
-            "task_id": task_id,
-            "priority": task_data.get("priority", 5),
-            "plan": [],
-            "current_step": 0,
-            "reasoning_history": [],
-            "search_queries": [],
-            "search_results": [],
-            "scraped_content": [],
-            "extracted_insights": [],
-            "analysis_results": {},
-            "relevant_memories": [],
-            "entity_context": {},
-            "conversation_history": [],
-            "confidence_score": 0.0,
-            "validation_results": {},
-            "errors": [],
-            "retry_count": 0,
-            "final_output": None,
-            "artifacts": [],
-            "iteration": 0,
-            "max_iteration": 10,
-            "started_at": datetime.now(),
-            "status": "running",
-
-
-            "resume_text": None, 
-            "job_keywords": [],
-            "jobs_data": [],
-            "matched_jobs": [],
-        }
-
-        config = {"configurable": {"thread_id": task_id}}
-
-        print(f"Starting graph execution for {task_id}")
-        result = await agent_app.agent_graph.graph.ainvoke(initial_state, config)
-
-        print(f"Task {task_id} completed successfully")
-        print(f"Confidence Score: {result.get('confidence_score', 0)}")
-        print(f"Iterations: {result.get('iteration', 0)}")
-        print(f"Final Status: {result.get('status', 'unknown')}")
-
-        # Generate Report
-        print(f"Preparing email for task: {task_id}")
+    with tracer.start_as_current_span("workflow.execute_matching.execute") as span:
+        execute_start = time.time()
+        agent_app = None
 
         try:
-            report_content = result.get('final_output', '')
-            if report_content:
-                print(f"Report Generated: {len(report_content)} characters")
-            else:
-                print("No final output — creating summary from insights")
-                insights = result.get('extracted_insights', [])
-                report_content = f"Task Report:\n\n## Task: {task_data.get('task')}\n\n"
-                if insights:
-                    report_content += "## Key Findings\n\n"
-                    for i, insight in enumerate(insights[:5], 1):
-                        if isinstance(insight, dict):
-                            findings = insight.get('key_findings', [])
-                            for finding in findings[:3]:
-                                report_content += f"{i}. {finding}\n"
+            agent_app = await get_agent_app()
+
+            run_id = initial_state.get("run_id")
+            resume_id = initial_state.get("resume_id")
+
+            user_id = initial_state.get("user_id")
+            logger.warning("Writing active search profile in execute job matching")
+
+
+            if not run_id:
+                logger.warning(f"CRITICAL: No run_id found in initial_state for {task_id}")
+                if agent_app.multi_agent_orchestrator:
+                    run_id =  await agent_app.multi_agent_orchestrator.shared_context.read(f"current_run_id_{user_id}")
+
+            
+            logger.info(f"Starting unified matching workflow {task_id}")
+            logger.info(f"Using run_id {run_id}")
+                
+            if agent_app.multi_agent_orchestrator:
+                await agent_app.multi_agent_orchestrator.shared_context.write(
+                    f"current_run_id_{user_id}",
+                    run_id,
+                    "WorkflowExecutor"
+            )
+            logger.info(f" Confirm run_id in shared_context {run_id}")
+
+            if agent_app.multi_agent_orchestrator:
+                verified = await agent_app.multi_agent_orchestrator.shared_context.read(f"current_run_id_{user_id}", )
+                if verified != run_id:
+                    logger.warning(f" Verification Failed Expected: {run_id} got {verified}")
                 else:
-                    print("Task completed but no detailed insight available.\n")
+                    logger.info(f"Verified run_id in shared context {verified}")         
 
-            task_type = task_data.get('config', {}).get('task_type', 'task')
-            pdf_path = pdf_generator.markdown_to_pdf(
-                markdown_content=report_content,
-                filename=f"{task_type}_{task_id}"
+                profile = {
+                    "user_id": user_id,
+                    "run_id": run_id,
+                    "resume_id": initial_state.get("resume_id"),
+                    "resume_text": initial_state.get("resume_text"),
+                    "initial_state": initial_state,
+                    "autonomous_enabled": True,
+                    "config": config,
+                    "task_id": task_id,
+                    "last_run_id": run_id,
+                    "workflow_status": "running",
+                    "timestamp": datetime.now().isoformat(),
+                    "cooldown_until": None,
+                }
+
+                profile_key = active_search_profile_key(run_id)
+                await agent_app.multi_agent_orchestrator.shared_context.write(
+                    profile_key,
+                    profile,
+                    "WorkflowExecutor",
+                )
+            
+            workflow_type = initial_state.get("workflow_type", "frontend_workflow")
+            if workflow_type == "autonomous_workflow":
+                await agent_app.multi_agent_orchestrator.shared_context.pop(
+                    f"new_resume_upload_{user_id}"
+                )
+                logger.warning(f"cleared new resume upload key for autonomous workflow {user_id}")
+            
+            result = await agent_app.run_langgraph_workflow(initial_state, config)
+
+            user_id = initial_state.get("user_id")
+            
+            matches_count = len(result.get('matched_jobs', []))
+            if matches_count > 0 and agent_app.multi_agent_orchestrator:
+                await agent_app.multi_agent_orchestrator.shared_context.write(
+                    f"ResumeMatcherAgent_target_resume",
+                    user_id, 
+                    "WorkflowExecutor"
+                )
+                
+            logger.info(f"Signals available for {user_id}")
+            
+            logger.info(f" Unified workflow completed: {task_id}")
+            logger.info(f"   Jobs found: {len(result.get('jobs_data', []))}")
+            logger.info(f"   Matches: {len(result.get('matched_jobs', []))}")
+            logger.info(f"   Confidence: {result.get('confidence_score', 0):.2%}")
+
+            user_email = initial_state.get("user_email")
+            job_keywords = initial_state.get("job_keywords", [])
+            location = initial_state.get("job_location", "Remote")
+            
+            if user_email and user_id:
+                try:
+                    # Check if preferences exist
+                    existing_prefs = agent_app.memory.preferences_collection.get(
+                        ids=[user_id]
+                    )
+                    
+                    if not existing_prefs or not existing_prefs.get("ids"):
+                        
+                        agent_app.memory.preferences_collection.add(
+                            ids=[user_id],
+                            documents=[f"User preferences for {user_email}"],
+                            metadatas=[{
+                                "user_id": user_id,
+                                "email": user_email,  
+                                "email_verified": True,
+                                "job_keywords": ",".join(job_keywords) if job_keywords else "",
+                                "location": location,
+                                "resume_id": resume_id,
+                                "resume_text": initial_state.get("resume_text"),
+                                "run_id": run_id,
+                                "created_at": datetime.now().isoformat()
+                            }]
+                        )
+                        logger.info(f"Stored preferences with email: {user_email} (user_id: {user_id})")
+                    else:
+                        # Update existing preferences with email (in case it was missing)
+                        existing_meta = existing_prefs["metadatas"][0]
+                        existing_meta["email"] = user_email
+                        existing_meta["resume_text"] = initial_state.get("resume_text")
+                        existing_meta["email_verified"] = True
+                        existing_meta["updated_at"] = datetime.now().isoformat()
+                        existing_meta["last_run_id"] = run_id
+
+                        agent_app.memory.preferences_collection.update(
+                            ids=[user_id],
+                            metadatas=[existing_meta]
+                        )
+                        logger.info(f" Updated preferences with email: {user_email}")
+                    
+                    with workflow_lock:
+                        pending_workflows.pop(task_id, None)
+
+                except Exception as e:
+                    logger.error(f" Failed to store preferences: {e}", exc_info=True)
+            else:
+                logger.error(f" CRITICAL: Missing email or user_id (email={user_email}, user_id={user_id})")
+
+            try:
+                metrics = WorkflowMetrics(
+                    workflow_type= initial_state.get("workflow_type", "frontend_workflow"),
+                    task_id=task_id,
+                    run_id=run_id,
+                    status="success",
+                    user_id= user_id,
+                    latency_ms=(time.time() - execute_start) * 1000,
+                    jobs_found=len(result.get("jobs_data", [])),
+                    matched_jobs=len(result.get("matched_jobs", [])),
+                    confidence_score=result.get("confidence_score", 0),
+                    timestamp= time.time()
+                )
+
+                await metrics_collector.record_workflow(metrics)
+                logger.warning("workflow type in execute metrics:{metrics}")
+            
+            except Exception as metric_error:
+                logger.error(f"Failed to record worflow_metrics:{metric_error}")
+
+                
+            return result
+
+        except Exception as e:
+            logger.error(f" Unified workflow failed: {task_id} - {e}", exc_info=True)
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            if agent_app is not None and agent_app.cognitive_brain:
+                await agent_app.cognitive_brain.autonomous_recovery([{
+                    "issue": "langgraph_loop_crash",
+                    "severity": "critical",
+                    "task_id": task_id,
+                    "error": str(e)
+                }])
+
+            if agent_app is not None and agent_app.multi_agent_orchestrator:
+                profile_key = active_search_profile_key(run_id)
+
+                profile = await agent_app.multi_agent_orchestrator.shared_context.read(profile_key)
+
+                if isinstance(profile, dict):
+                    profile["workflow_status"] = "failed"
+                    profile["last_failed_at"] = datetime.now().isoformat()
+                    profile["last_error"] = str(e)
+
+                    await agent_app.multi_agent_orchestrator.shared_context.write(
+                        profile_key,
+                        profile,
+                        "WorkflowExecutor"
             )
-            print(f"PDF Created: {pdf_path}")
+            #  if agent_app is not None and agent_app.multi_agent_orchestrator:
+            #     await agent_app.multi_agent_orchestrator.shared_context.write(
+            #         f"current_run_id_{user_id}",
+            #         run_id,
+            #         "WorkflowExecutor"
+            #     )
 
-            task_name = task_data.get('task', 'Task')[:80]
-            confidence = result.get('confidence_score', 0)
+            try:
+                metrics =  WorkflowMetrics(
+                    workflow_type=initial_state.get("workflow_type", "frontend_workflow"),
+                    task_id=task_id,
+                    run_id=run_id or "unknown",
+                    status="failed",
+                    user_id=user_id or "unknown",
+                    latency_ms= (time.time() - execute_start) * 1000,
+                    jobs_found=0,
+                    matched_jobs=0,
+                    confidence_score=0.0,
+                    timestamp=time.time()
+                )
 
-            email_body = f"""
-            <html>
-            <body>
-                <h2> Autonomous AI Agent Report</h2>
-                <p><strong>Task:</strong> {task_name}</p>
-                <p><strong>Type:</strong> {task_type}</p>
-                <p><strong>ID:</strong> {task_id}</p>
-                <p><strong>Confidence:</strong> {confidence:.1%}</p>
-                <p><strong>Iterations:</strong> {result.get('iteration', 0)}</p>
-                <hr>
-                <p><strong>Report Preview:</strong></p>
-                <p>{report_content[:600].replace('\n', '<br>')}...</p>
-                <p><em>Full report is attached as a PDF document.</em></p>
-            </body>
-            </html>
-            """
+                await metrics_collector.record_workflow(metrics)
 
-            print("Sending email...")
-            email_sender.send_report(
-                subject=f"Task Completed: {task_name}",
-                body=email_body,
-                pdf_path=pdf_path
+                logger.warning(f"Execute unified metrics for lantency:{metrics}")
+            
+            except Exception as metrics_error:
+                logger.error(f"Failed to calculate workflow metrics:{metrics_error}",
+                exc_info=True
             )
-            print(f"Report successfully sent to {email_sender.to_email}\n")
 
-        except Exception as email_error:
-            print(f"Failed to send email: {email_error}")
-            import traceback
-            traceback.print_exc()
+            raise
 
-        return result
+        finally:
+            try:
+                if agent_app is not None and agent_app.multi_agent_orchestrator:
+                        if agent_app.multi_agent_orchestrator:
+                            profile_key = active_search_profile_key(run_id)
+                            profile = await agent_app.multi_agent_orchestrator.shared_context.read(profile_key)
+                            if isinstance(profile, dict) and profile.get("workflow_status") == "running":
+                                    profile["workflow_status"] = "idle"
+                                    profile["last_completed_at"] = datetime.now().isoformat()
+                                    await agent_app.multi_agent_orchestrator.shared_context.write(
+                                        profile_key,
+                                        profile,
+                                        "WorkflowExecutor"
+                                )
+            except Exception as cleanup_error:
+                logger.error(
+                    f"workflow cleanup failed: {cleanup_error}",
+                    exc_info=True
+                )
 
-    except Exception as e:
-        print(f"Task {task_id} failed: {e}")
-        import traceback
-        traceback.print_exc()
+            span.set_attribute("execute.latency_seconds", time.time() - execute_start)
 
+# SYSTEM workflow observability STATUS ENDPOINTS
+@app.get("/app/system/status")
+async def system_state(user_id: str = Depends(get_current_user)):
 
+    user_id = user_id
 
+    frontend_metrics = await metrics_collector.get_recent(
+        "frontend_workflow",
+        50,
+        user_id=user_id
+    )
 
-# SYSTEM STATUS ENDPOINTS
+    autonomous_metrics = await metrics_collector.get_recent(
+        "autonomous_workflow",
+        50,
+        user_id=user_id
+    )
 
-@app.get("/api/system/status")
-async def get_system_status():
-    """Get complete system status (both brains)"""
-    return agent_app.get_system_status()
+    def avg_latency(metrics):
+        if not metrics:
+            return 0
 
+        return sum(m["latency_ms"] for m in metrics) / len(metrics)
 
-@app.get("/api/system/brain1")
-async def get_brain1_status():
-    """Get Brain 1 (LangGraph) status"""
-    status = agent_app.get_system_status()
-    return status["brain_1_langgraph"]
+    def success_rate(metrics):
+        if not metrics:
+            return 100
+
+        successful = len(
+            [m for m in metrics if m["status"] == "success"]
+        )
+
+        return round((successful / len(metrics)) * 100, 2)
+    
+    def latest_latency(metrics):
+        if not metrics:
+            return 0
+        
+        return metrics[0]["latency_ms"]
+    
+    def fastest_latency(metrics):
+        if not metrics:
+            return 0
+        
+        return min(
+            m["latency_ms"]
+            for m in metrics
+        )
+    
+    def slowest_latency(metrics):
+        if not metrics:
+            return 0
+        
+        return max(
+            m["latency_ms"]
+            for m in metrics
+        )
+
+    return {
+        "status": "healthy",
+
+        "frontend": {
+            "user_id": user_id,
+            "name": "Frontend Workflow",
+            "avg_latency_ms": avg_latency(frontend_metrics),
+            "latest_latency": latest_latency(frontend_metrics),
+            "fastest_latency": fastest_latency(frontend_metrics),
+            "slowest_latency": slowest_latency(frontend_metrics),
+            "runs": len(frontend_metrics),
+            "success_rate": success_rate(frontend_metrics),
+            "agents": [
+                "ResumeMatcherAgent",
+                "ReportGeneratorAgent",
+                "NotificationAgent"
+            ]
+        },
+
+        "autonomous": {
+            "user_id": user_id,
+            "name": "Autonomous Workflow",
+            "avg_latency_ms": avg_latency(autonomous_metrics),
+            "latest_latency": latest_latency(autonomous_metrics),
+            "fastest_latency": fastest_latency(autonomous_metrics),
+            "slowest_latency": slowest_latency(autonomous_metrics), 
+            "runs": len(autonomous_metrics),
+            "success_rate": success_rate(autonomous_metrics),
+            "agents": [
+                "StrategicAgent",
+                "SourceAgent",
+                "FollowupAgent"
+            ]
+        },
+
+        "workflows": {
+            "active": len(pending_workflows),
+            "total": 2
+        },
+
+        "timestamp": datetime.now().isoformat()
+    } 
+   
+
+@router.websocket("/ws/{run_id}")
+async def ws_endpoint(ws: WebSocket, run_id: str):
+    await ws.accept()
+
+    async for event in event_bus.subscribe():
+        await ws.send_json(event)
 
 
 @app.get("/api/system/brain2")
 async def get_brain2_status():
+    agent_app = await get_agent_app()
+
     """Get Brain 2 (Multi-Agents) status"""
     return agent_app.get_autonomous_status()
 
@@ -547,6 +1130,7 @@ async def get_brain2_status():
 
 @app.get("/status/agents")
 async def get_agent_status():
+    agent_app = await get_agent_app()
     """Get status of all multi-agents"""
     if not agent_app.multi_agent_orchestrator:
         return {"error": "Multi-agent system not initialized"}
@@ -556,6 +1140,8 @@ async def get_agent_status():
 
 @app.get("/status/agents/{agent_name}")
 async def get_agent_details(agent_name: str):
+    agent_app = await get_agent_app()
+
     """Get detailed insights about a specific agent"""
     if not agent_app.multi_agent_orchestrator:
         return {"error": "Multi-agent system not initialized"}
@@ -565,6 +1151,8 @@ async def get_agent_details(agent_name: str):
 
 @app.post("/agents/trigger/{agent_name}")
 async def trigger_agent_manually(agent_name: str):
+    agent_app = await get_agent_app()
+
     """Manually trigger a specific agent"""
     if not agent_app.multi_agent_orchestrator:
         return {"error": "Multi-agent system not initialized"}
@@ -582,12 +1170,11 @@ async def trigger_agent_manually(agent_name: str):
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
-
-
 # INTEGRATION ENDPOINTS
 
 @app.post("/api/integration/notify/resume")
 async def notify_new_resume(resume_id: str, keywords: list):
+    agent_app = await get_agent_app()
     """Manually notify Brain 2 about a new resume"""
     if not agent_app.multi_agent_orchestrator:
         return {"error": "Multi-agent system not initialized"}
@@ -598,6 +1185,8 @@ async def notify_new_resume(resume_id: str, keywords: list):
 
 @app.post("/api/integration/notify/jobs")
 async def notify_new_jobs(job_count: int, source: str = "manual"):
+    agent_app = await get_agent_app()
+
     """Manually notify Brain 2 about new jobs"""
     if not agent_app.multi_agent_orchestrator:
         return {"error": "Multi-agent system not initialized"}
@@ -606,51 +1195,48 @@ async def notify_new_jobs(job_count: int, source: str = "manual"):
     return {"success": True, "message": f"Brain 2 notified about {job_count} jobs"}
 
 
-# TEST ENDPOINTS
-
-@app.get("/test/connection")
-async def test_connection():
-    return {
-        "message": "Unified system connected!",
-        "timestamp": datetime.now().isoformat(),
-        "system": agent_app.get_system_status()
-    }
-
-
-@app.post("/test/brain1")
-async def test_brain1():
-    """Test Brain 1 (LangGraph)"""
-    if not agent_app.agent_graph:
-        return {"error": "Brain 1 not initialized"}
     
-    return {
-        "status": "ok",
-        "brain": "LangGraph",
-        "components": {
-            "graph": agent_app.agent_graph is not None,
-            "orchestrator": agent_app.orchestrator is not None,
-            "goal_manager": agent_app.goal_manager is not None
-        }
-    }
+@app.post("/debug/refetch")
+async def debug_refetch(user_id: str = Depends(get_current_user)):
+
+        agent_app = await get_agent_app()
+
+        await agent_app.multi_agent_orchestrator.shared_context.write(
+            f"policy_approved_{user_id}",
+            {
+                "approved": True,
+                "actions": {"apply_volume": "high"},
+                "source": "manual_test",
+                "confidence": 1.0,
+                "timestamp": datetime.now().isoformat(),
+            },
+            "debug_endpoint"
+        )
+        return {"status": "refetch_triggered"}
 
 
-@app.post("/test/brain2")
-async def test_brain2():
-    """Test Brain 2 (Multi-Agents)"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"error": "Brain 2 not initialized"}
-    
-    # Trigger a simple agent cycle
-    try:
-        agent = agent_app.multi_agent_orchestrator.agents["ResumeMatcherAgent"]
-        result = await agent.run_cycle()
+@app.get("/resume/status/{task_id}")
+async def resume_status(task_id: str):
+    agent_app = await get_agent_app()
+    workflow = pending_workflows.get(task_id)
+
+    if not workflow:
         return {
-            "status": "ok",
-            "brain": "Multi-Agents",
-            "test_result": result
+            "status": "completed_or_not_found",
+            "task_id": task_id
         }
-    except Exception as e:
-        return {"error": str(e)}
+    
+    state = workflow["initial_state"]
+
+    return {
+        "task_id": task_id,
+        "status": state.get("status", "running"),
+        "jobs_found": len(state.get("jobs_data", [])),
+        "matched_jobs": state.get("matched_jobs", []),
+        "final_report": state.get("final_report"),
+        "confidence": state.get("confidence_score", 0),
+        "email": state.get("user_email")
+    }
 
 # ENTRY POINT
 

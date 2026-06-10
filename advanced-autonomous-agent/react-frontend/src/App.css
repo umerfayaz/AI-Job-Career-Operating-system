@@ -1,0 +1,16 @@
+
+.typing::after {
+  content: "▌";
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.chat-text {
+  font-size: 20px;
+  line-height: 1.6;
+}

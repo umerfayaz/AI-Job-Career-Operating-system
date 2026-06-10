@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List
-import markdown
+from typing import Dict, List
 import structlog
 from ..agent.graph import AgentGraph
 from ..agent.state import AgentState

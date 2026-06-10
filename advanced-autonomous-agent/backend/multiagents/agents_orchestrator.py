@@ -1,383 +1,854 @@
 """
-Main Autonomous Orchestrator
-Runs 24/ Cordinates all agents based on events
+Autonomous Orchestrator
+Runs 24/7 and coordinates all agents with Cognitive Orchestrator
 """
-
 import asyncio
-from typing import List , Dict
-from backend.multiagents.guardrails import JobReportGuardrails
+import time
+from typing import List, Dict
 from datetime import datetime
 import structlog
-import signal
-import sys
-
-
+from backend.multiagents.guardrails import JobReportGuardrails
 from .agents_team import (
-    JobScraperAgent,
+    # JobScraperAgent,
     ResumeMatcherAgent,
     ReportGeneratorAgent,
     MemoryMaintenanceAgent,
     NotificationAgent,
     EpisodicMemory,
-    SharedContext
+    SharedContext,
 )
 
-from .decision_engine import EventType, DecisionEngine
+from backend.brain_outcomeLoop.email_config import load_email_config
+from backend.postgreSQL.database import PostgresDatabase
+from backend.brain_outcomeLoop.brain4outcomeLoop import OutComeLoop
+from backend.core.event_bus import get_event_bus
+from backend.multiagents.backend_listener import RefetchJobListener
+from backend.core.safeRunner import SafeRunner
 from .event_monitor import EventMonitor
 from ..core.memory_system import MemoryRAGSystem
+from backend.config.settings import Settings
+from backend.redis.redis_memory import redis_client
 
 
-def get_app():
-    from backend.application import AgentApplication
-    return AgentApplication()
 
 logger = structlog.get_logger()
 
+
 class AutonomousOrchestrator:
-    """Main Orchestraator Runs 24/7"""
+    """Main system orchestrator handling all agents and LLM decision making"""
 
-    def __init__(self, memory: MemoryRAGSystem):
-        self.agent_app =get_app()
+    def __init__(self, memory: MemoryRAGSystem, orchestrator):
+        self.event_bus = get_event_bus()
+        email_config = load_email_config()
+        self.outcome_database =PostgresDatabase(
+            email_config ={
+                "email": email_config["email"],
+                "password": email_config["password"],
+                "imap_server": email_config["imap_server"],
+                "folder": email_config["folder"],
+            }
+        )
+
+        self.orchestrator = orchestrator
         self.memory = memory
-
-
-        # Initialize Guardrails
+        self.settings = Settings()
+        self.safe_runner = SafeRunner(self.event_bus)
         self.guardrails = JobReportGuardrails()
-
-        # Initialze EpisodicMemory and SharedContext 
         self.episodic_memory = EpisodicMemory(memory)
-        self.shared_context = SharedContext()
+        self.shared_context = SharedContext(
+            memory_system=memory,
+            redis_client=redis_client
+        )
+        self.start_time = time.time()
+        self.issue_attempts = {}
+        self.max_self_heal_attempts =2
+        self.event_processed = 0
+        self.trigger_refetch_jobs = None
+        self.agent_app = None
+        self.cognitive = None
+        self.last_event = None
+        self.last_refetch_time = {}
+        self.last_refetch_hours = 2
 
-        ## Inittialize Components
-        self.decision_engine = DecisionEngine()
+        # Event monitoring
         self.event_monitor = EventMonitor(memory)
         self.event_queue = asyncio.Queue()
+        self.outcome_loop = OutComeLoop(
+            shared_context=self.shared_context,
+            event_bus=self.event_bus,
+            outcome_database=self.outcome_database,
+            re_fetch_event_emitter=self.trigger_refetch_jobs
+        )
 
-        ## Inittialize Agents
+        # Agents dictionary
+        self.agents: Dict[str, object] = {}
+        self._agents_initialized = False
+        # Memory Maintenance 
+        self.maintenance_running = False
 
-        self.agents = {
-            'JobScraperAgent': JobScraperAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
-            'ResumeMatcherAgent': ResumeMatcherAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
-            'ReportGeneratorAgent': ReportGeneratorAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
-            'MemoryMaintenanceAgent': MemoryMaintenanceAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails),
-            'NotificationAgent': NotificationAgent(self.agent_app, memory, self.episodic_memory, self.shared_context, self.guardrails)
+        self.system_metrics = {
+            "failure_rate": 0.0,
+            "avg_response_time": 0.0,
+            "memory_pressure": 0.0,
+            "agent_utilization": {},
+            "error_count_last_hour": 0,
+            "stuck_tasks": 0,
+            "match_jobs_count": 0.0,
+            "jobs_scraped_today": 0.0,
+
+            # Progress Outcomes Updates
+            "task_completed_last_hour": 0,
+            "task_started_last_hour": 0,
+            "progress_rate": 0.0,
+            "idle_agents": [],
+            "no_progress_minutes": 0,
+            "last_updated": datetime.now().isoformat()
         }
 
-        self.is_running =False
+        from backend.systen_brain.decider import CognitiveBrain
+        self.cognitive_brain = CognitiveBrain(orchestrator=self)
+
+        # System state
+        self.is_running = False
+        self._started = False
+        self.started_lock = asyncio.Lock()
+        self._tasks = []
         self.stats = {
             'events_processed': 0,
             'agents_activated': 0,
-            'start_time': 0,
+            'start_time': None,
             'uptime_seconds': 0
         }
 
+    def initialize_agents_with_app(self, agent_app):
+        """Initialize agents after the agent_app is available"""
+        self.agent_app = agent_app
 
-        # Setup Shutdown
-        signal.signal(signal.SIGINT, self._shutdown_handler)
-        signal.signal(signal.SIGTERM, self._shutdown_handler)
+        self.agents = {
+            'ResumeMatcherAgent': ResumeMatcherAgent(agent_app, self.memory, self.episodic_memory, self.shared_context, self.guardrails, multi_agents_orchestrator=self),
+            'ReportGeneratorAgent': ReportGeneratorAgent(
+                agent_app,
+                self.memory,
+                self.episodic_memory,
+                self.shared_context,
+                self.guardrails
+            ),
+            'NotificationAgent': NotificationAgent(agent_app, self.memory, self.episodic_memory, self.shared_context, self.guardrails),
+            'MemoryMaintenanceAgent': MemoryMaintenanceAgent(agent_app, self.memory, self.episodic_memory, self.shared_context, self.guardrails),
 
-    def _shutdown_handler(self, signum, frame):
-        """Handle shutdown"""
-        logger.info("Shutdown Signal Received")
-        self.is_running =False
-        sys.exit(0)
+        }
 
-    async def process_event(self, event: Dict):
-        """Engine decides which agent to activate"""
+        report_gen = self.agents['ReportGeneratorAgent']
+        notification = self.agents['NotificationAgent']
+        report_gen.link_notification_agent(notification)
+        logger.info("Agents Linked: ReportGen -> Notification")
 
-        logger.info(f"Processing Event: {event.get('type')}")
+        from .cognitive_orchestrator import CognitiveOrchestrator
+
+        self.cognitive = CognitiveOrchestrator(
+            agents = self.agents,
+            memory = self.memory,
+            shared_context= self.shared_context,
+            decision_engine=None,
+            episodic_memory= self.episodic_memory,
+            settings= self.settings,
+            guardrails =self.guardrails
+        )
+
+        logger.info("Cognitive Orchtrator Initialzed")
+    
+    def initialize_refetch_loop(self):
+        self.listener = RefetchJobListener(
+            shared_context = self.shared_context,
+            event_bus=self.event_bus,
+            safe_runner=self.safe_runner,
+            outcome_database=self.outcome_database
+        )
+        self.outcome_loop.refetch_listener = self.listener
+    
+    async def apply_control(self, signal):
+        logger.info(f"Applying Control: {signal.action} to {signal.apply_to}")
 
         try:
+            if signal.apply_to == "brain1":
+                await self._control_brain1(signal)
+                await self.shared_context.write(
+                    "brain1_allowed",
+                    signal.action !="pause",
+                    "brain3"
+                )
+            
+            elif signal.apply_to == "brain2":
+                await self._control_brain2(signal)
+            
+            elif signal.apply_to == "system":
+                await self._control_system(signal)
+        except Exception as e: 
+             logger.info(f"Control Signal Failed {e}")
+    
+    async def _control_brain1(self, signal):
+        """Controlling langgraph Orchestrator"""
 
-            # Decide which agent to activate
-            agents_to_activate = self.decision_engine.decide(event)
+        allowed = await self.shared_context.read("brain1_allowed")
+        if allowed is False:
+            logger.info("brain1 execution blocked by Brain3")
+            return
 
-            if not agents_to_activate:
-                logger.info("Now agents needed to activate")
+        if not hasattr(self, "brain1"):
+            logger.warning("Brain-1 not available")
+        
+        if signal.action == "pause":
+            self.brain1.is_running = False
+            logger.info("Brain-1 is Paused")
+        
+        elif signal.action == "resume":
+            self.brain1.is_running = True
+            logger.info("Brain-1 resumed")
+        
+        elif signal.action == "reduce":
+
+            if signal.value:
+                self.brain1.planner.max_depth = int(signal.value)
+                logger.info(f"Brain-1 depth reduced to {signal.value}")
+        
+        elif signal.action == "boost":
+
+            if signal.value:
+                self.brain1.planner.max_depth = int(signal.value)
+                logger.info(f"Brain-1 depth boosted to {signal.value}")
+    
+    async def _control_brain2(self, signal):
+        """Control multi-agent System (brain2)"""
+
+        if signal.action == "pause":
+            if signal.target and signal.target in self.agents:
+                agent = self.agents[signal.target]
+                agent.paused = True
+                logger.info(f"Agent {signal.target} paused")
+        
+        elif signal.action == "resume":
+            if signal.target and signal.target in self.agents:
+                agent = self.agents[signal.target]
+                agent.paused = False
+                logger.info(f" Agent {signal.target} resumed")
+        
+        elif signal.action == "retry":
+
+            await self._retry_failed_tasks(signal.target)
+        
+        elif signal.action == "escalate":
+
+            await self._escalate_priority(signal.target)
+    
+    async def _control_system(self, signal):
+
+        if signal.action == "reduce":
+
+            self.settings.max_concurrent_agents =  int(signal.value or 1)
+            logger.info("system resource reduced")
+        
+        elif signal.action == "boost":
+
+            self.settings.max_concurrent_agents = int(signal.value or 3)
+            logger.info("system resources boosted")
+    
+    async def _update_system_metrics(self):
+        """Updating Syste, health Metrics"""
+
+        jobs = await self.shared_context.read("recent_jobs") or []
+
+        urls = [j.get("url") for j in jobs if j.get("url")]
+
+        if urls:
+            duplicates  = len(urls) - len(set(urls))
+            self.system_metrics["job_repitation_rate"] = duplicates / len(urls)
+        
+        else:
+            self.system_metrics["job_repitation_rate"] = 0.0
+
+        total_tasks = sum(a.metrics['task_completed'] + a.metrics['task_failed']
+           for a in self.agents.values()
+        )
+
+        failed_tasks = sum(a.metrics['task_failed'] for a in self.agents.values())
+
+        self.system_metrics["failure_rate"] = (
+            failed_tasks / total_tasks if total_tasks > 0 else 0.0
+        )
+
+        # Calculating agent Utilization
+        for name, agent in self.agents.items():
+            total = agent.metrics['task_completed'] + agent.metrics['task_failed']
+            self.system_metrics['agent_utilization'][name] =total
+        
+        # check for stuck tasks
+        active_tasks = await self.shared_context.read("active_tasks")
+        if active_tasks:
+            now = datetime.now()
+            stuck_count = 0
+            for task_id, task in active_tasks.items():
+                created_at = datetime.fromisoformat(task["created_at"])
+                if (now - created_at).total_seconds() > 3600:
+                    stuck_count +=1
+            self.system_metrics["stuck_tasks"] =stuck_count
+
+        self.system_metrics["last_updated"] = datetime.now().isoformat()
+
+    def calculate_memory_pressure(self):
+
+        mma = self.agents["MemoryMaintenanceAgent"] 
+
+        job_count = len(self.memory.job_collection.get().get("ids",[]))
+        match_count = len(self.memory.match_collection.get().get("ids", []))
+        resume_count = len(self.memory.resume_collection.get().get("ids", []))
+
+        job_pressure = job_count / max(mma.max_jobs, 1)
+        match_pressure = match_count / max(mma.max_matches, 1)
+        resume_pressure = resume_count / max(mma.max_resume, 1)
+
+        capacity_pressure = max(job_pressure, match_pressure, resume_pressure)
+
+        stagnation_pressure = 0.0
+        if self.system_metrics.get("no_progress_minutes", 0.0) >30:
+            stagnation_pressure = 0.4
+
+        error_pressure = min(
+            self.system_metrics.get("failure_rate", 0.0) * 2,
+            1.0
+        )
+
+        memory_pressure = (
+            0.6 * capacity_pressure +
+            0.25 * stagnation_pressure +
+            0.15 * error_pressure
+        )
+
+        return min(memory_pressure, 1.0)
+
+    async def brain3_reflection_loop(self):
+        """Brain3 reflection loop and control"""
+        logger.info("Brain3 reflection loop started")
+
+        HIGH_PRESSURE = 0.7
+        LOW_PRESSURE = 0.4
+        
+
+        while self.is_running:
+            try:
+
+                now = datetime.now()
+                await asyncio.sleep(60)
+
+                await self._update_system_metrics()
+
+                global_metrics = await self.shared_context.get_all_metrics()
+
+                users =  await self.shared_context.get_active_users()
+                for user_id in users:
+
+                    self.last_refetch_time.setdefault(user_id, None)
+                    external_policy = await self.shared_context.pop(f"policy_proposal_{user_id}")
+                    logger.info(f"Policy Recevied {external_policy}")
+
+                    if external_policy and external_policy.get("actions", {}).get("trigger_workflow") is True:
+                        logger.info(f"External Policy trigger_workflow {external_policy.get('actions', {})}")
+
+                        await self.cognitive_brain.merge_external_policy(external_policy["actions"])
+                    
+                        should_refetch = await self.outcome_loop.should_refetch(external_policy["actions"])
+                        if should_refetch:
+                            last_time = self.last_refetch_time.get(user_id)
+                            if last_time:
+                                delta_time = (now - last_time).total_seconds()
+
+                                cooldown_seconds = self.last_refetch_hours * 3600
+
+                                if delta_time < cooldown_seconds:
+                                    logger.info(f"Brain3 cooldown active for user {user_id}")
+                                    continue
+                        
+                        await self.shared_context.write(
+                            f"policy_approved_{user_id}",
+                            {
+                                "approved": True,
+                                "actions": external_policy["actions"],
+                                "source": "brain3",
+                                "timestamp": datetime.now().isoformat()
+                            },
+                            "brain3"
+                        )
+
+                        logger.warning(f"Policy approved for:{user_id} in brain3")
+                        self.last_refetch_time[user_id] = now
+                    else:
+                        logger.info("Policy Proposal ignored due to low confidence")
+
+
+                    resume_upload=await self.shared_context.read(f"new_resume_upload_{user_id}")
+                    if not isinstance(resume_upload, dict):
+                        continue
+                    
+                    reflection_window = resume_upload.copy()
+                
+                    has_new_evidence = any([
+                        global_metrics.get("jobs_scraped_today", 0) >0,
+                        global_metrics.get("matches_created_today", 0) >0,
+                        global_metrics.get("reports_generated_today", 0) >0,
+                    ])
+
+                    if not has_new_evidence:
+                        logger.info("No new evidemce found brain3 reflection idle")
+                        continue
+
+                    outcome_metrics = await self.shared_context.pop(f"outcome_metrics_{user_id}")
+                    if outcome_metrics:
+                        await self.cognitive_brain.learn_from_outcomes(outcome_metrics)
+
+                    # TASKS RECORVER BRAIN3 STARTS HERE 
+                    errors = await self.cognitive_brain.detected_errors(self.system_metrics)
+
+                    await self.cognitive_brain.autonomous_recovery(errors)
+
+                    for error in errors:
+                        issue = error.get("issue", "unknown")
+
+                        attempts = self.issue_attempts.get(issue, 0)
+
+                        if attempts < self.max_self_heal_attempts:
+                            self.issue_attempts[issue] =  attempts + 1
+                            error["human_required"] = False
+                        else:
+                            error["human_required"] = True
+                            error["severity"] = "critical"
+                    
+                    await self.cognitive_brain.check_signals_notification(errors)
+
+                    memory_pressure = self.calculate_memory_pressure()
+                    memory_pressure = max(0.0, min(memory_pressure, 1.0))
+                    self.system_metrics["memory_pressure"] = memory_pressure
+
+                    maintenance_allowed = (
+                    await self.shared_context.read("maintenance_allowed")
+                    )
+
+                    if memory_pressure >= HIGH_PRESSURE and not maintenance_allowed:
+                        await self.shared_context.write(
+                            "maintenance_allowed",
+                            True,
+                            "brain3"
+                        )
+
+                        await self.shared_context.write(
+                            "maintenance_command",
+                            {"run": True},
+                            "brain3"
+                        )
+                        logger.warning(
+                            f"brain3 triggered MaintenanceAgent due to High Pressure"
+                            f"(pressure={memory_pressure:.2})"
+                        )
+                    
+                    elif memory_pressure <=LOW_PRESSURE and maintenance_allowed:
+                        await self.shared_context.write(
+                            "maintenance_allowed",
+                            False,
+                            "brain3"
+                        )
+
+                        logger.info(
+                            f"Brain3 released maintenance agent"
+                            f"(pressure{memory_pressure:.2})"
+                        )                 
+
+                    if not self.cognitive_brain.should_reflect(self.system_metrics):
+                        logger.debug("Brain3 No reflection needed yet")
+                        continue
+
+                    business_metrics = await self.shared_context.get_all_metrics()
+                    
+                    # Gathering context
+                    recent_events = list(self.episodic_memory.get_recent_summary(limit=10))
+                    memory_summary = f"""
+
+        System Health Metrics:
+        -Failure rate: {self.system_metrics['failure_rate']:.1%}
+        -Stuck Tasks: {self.system_metrics['stuck_tasks']}
+        -Agent_utilization: {self.system_metrics['agent_utilization']}
+        -Memory Maintenance: {self.system_metrics['memory_pressure']}
+
+        Business Metrics:
+        -Jobs Scraped Today: {business_metrics.get('jobs_scraped_today', 0)}
+        -Matches Created Today: {business_metrics.get('matches_created_today', 0)}
+        -Reports Generated Today: {business_metrics.get('reports_generated_today', 0)}
+        """
+
+                    logger.info("Brain 3 Reflecting on system state...")
+
+                    decision = await self.cognitive_brain.think(
+                        system_metrics = self.system_metrics,
+                        recent_events=recent_events,
+                        memory_summary= str(memory_summary),
+                    )
+
+                    decision.has_evidence = has_new_evidence
+
+                    remaining = reflection_window.get("remaining_cycles", 0) -1
+
+                    if remaining <=0:
+                        await self.shared_context.pop(f"new_resume_upload_{user_id}")
+                        logger.info("brain3 reasoning window closed")
+                    
+                    else:
+                        resume_upload["remaining_cycles"]  = remaining
+                        await self.shared_context.write(
+                            f"new_resume_upload_{user_id}",
+                            resume_upload,
+                            "brain3"
+                        )
+                    
+                    logger.info(f" Brain-3 Decision {decision.intent}")
+                    logger.info(f"Reasoning {decision.reasoning}")
+                    logger.info(f" Confidence {decision.confidence:.1%}")
+
+
+                    control_signals =  await self.cognitive_brain.apply_decision(decision)
+
+                    for signal in control_signals:
+                        await self.apply_control(signal)
+                    
+                    await self.shared_context.write("maintenance_allowed",
+                        not any(
+                            s.apply_to == "system" and s.action == "pause"
+                            for s in control_signals
+                        ),
+                        "brain3"
+                    )
+                    self.cognitive_brain.ingest_feedback({
+                        "decision": decision.intent,
+                        "signal_applied": len(control_signals),
+                        "system_metrics": self.system_metrics.copy(),
+                        "business_metrics": business_metrics,
+                        "timestamp": datetime.now().isoformat()
+                    })
+
+            except Exception as e:
+                logger.info(f" Brain3 refelction loop error{e}", exc_info=True)
+
+    
+    async def _retry_failed_tasks(self, agent_name: str = None):
+        """For retrying tasks that failed"""
+        if agent_name:
+            agent = self.agents.get(agent_name)
+            if agent:
+
+                logger.info(f"Retrying tasks for {agent_name}")
+        else:
+            logger.info("Retrying all Failed tasks")
+    
+    async def _escalate_priority(self, task_id: str):
+        """Escalate task Priority"""
+        logger.info(f"Escalating priority for {task_id}")
+
+
+    def get_status(self):
+        return {
+            "orchestrator": "brain_2",
+            "running": True,
+            "uptime_seconds": int(time.time() - self.start_time),
+            "agents_registered": list(self.agents.keys()),
+            "agents_count": len(self.agents),
+            "event_processed": self.event_processed,
+            "last_event": self.last_event
+        }
+
+    # Core Event Processing 
+
+    async def event_process(self, event: Dict):
+        """FIXED: Process events through Cognitive Orchestrator"""
+        logger.info(f"📥 Processing event: {event.get('type')}")
+
+        try:
+            # Cognitive orchestrator decides and executes
+            decision = await self.cognitive.decide(event)
+            
+            agents_run = decision.get("agents", [])
+            reasoning = decision.get("reasoning", "")
+            status = decision.get("status", "unknown")
+
+            if status == "error":
+                logger.error(f" Orchestration error: {reasoning}")
                 return
 
-            # Activate agents in parraller
-            tasks =[]
-            for agent_name in agents_to_activate:
-                agent = self.agents.get(agent_name)
+            if agents_run:
+                logger.info(f" Orchestration complete: {len(agents_run)} agents ran")
+                logger.info(f" Reasoning: {reasoning}")
+                self.stats["agents_activated"] += len(agents_run)
+            else:
+                logger.info(f" No agents needed: {reasoning}")
 
-                if agent:
-                    tasks.append(agent.run_cycle())
-                    self.stats['agents_activated'] +=1
-            
-            ## Run all agents Concurrently
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            ## 4 Log
-            for agent_name, result in zip(agents_to_activate, results):
-                if isinstance(result, Exception):
-                    logger.error(f" {agent_name} Failed: {result}")
-                
-                else:
-                    logger.info(f"{agent_name} {result.get('status')}")
-            
-            self.stats['events_processed'] +=1
+            self.stats["events_processed"] += 1
 
         except Exception as e:
-            logger.error(f" Error Processing Event {e}")
-
+            logger.error(f" Event processing error: {e}", exc_info=True)
+          
     async def event_processed_loop(self):
-        """Main Event Processing Loop"""
-
-        logger.info("Event Processing Loop Started")
+        """Continuously process events from the queue"""
+        logger.info("Event processing loop started")
 
         while self.is_running:
-
             try:
-                # Wait for event
-                event = await asyncio.wait_for(
-                  self.event_queue.get(),
-                  timeout =5.0  
-                ) 
-
-                await self.process_event(event)
+                event = await self.event_queue.get()
+                await self.event_process(event)
             except asyncio.TimeoutError:
-
                 continue
-            
             except Exception as e:
-                logger.error(f" Error in Processing loop {e}")
-                await asyncio.sleep(1)
-    
-    async def autonomous_goal_generation_loop(self):
-        """Generate new goal based on system state"""
-        while self.is_running:
+                logger.error(f"Error in processing loop: {e}")
+                await asyncio.sleep(0.1)
+ 
+    async def memory_maintenance_loop(self):
+        """Memory Maintenance Worker only act on Command of Brain3"""
+
+        self.maintenance_running = True
+        logger.info("Maintenance worker started on Commands of Brain3")
+
+        while self.maintenance_running:
             try:
-                await asyncio.sleep(300)
+                allowed = await self.shared_context.read("maintenance_allowed")
+                if allowed is False:
+                    logger.info("Maintenance Blocked by Brain3")
+                    await asyncio.sleep(5)
+                    continue
 
-                # Chec if system needs work
-                resume_count = len(self.memory.resume_collection.get().get("ids", []))
-                job_count = len(self.memory.job_collection.get().get("ids", []))
+                decision =  await self.shared_context.read("maintenance_command")
+                if not decision or not decision.get("run", False):
+                    await asyncio.sleep(2)
+                    continue
 
-                # Goal if resume exists but old jobs, scrape new one's
-                if resume_count > 0 and job_count < 50:
-                    logger.info(f"Goal Generated need more jobs")
-                    await self.event_queue.put({
-                        "type": "autonomous_goal",
-                        "Goal": "scrape-more-jobs",
-                        "reason": f" Job count {job_count} jobs for {resume_count} resumes"
-                    })
-            
+
+                logger.info("Brain3 authorized maintenance run")
+
+                memory_agent = self.agents.get("MemoryMaintenanceAgent")
+                if not memory_agent:
+                    logger.warning("No Memory agent is found")
+                    await asyncio.sleep(5)
+                    continue
+
+                result = await memory_agent.run_cycle()
+
+                await self.shared_context.write(
+                    "maintenance_command",
+                    {"run": False},
+                    "MaintenanceWorker"
+                )
+
+                logger.info(f"Maintenance result {result}")
             except Exception as e:
-                logger.error(f"Goal generator failed {e}")
-            
-    
+                logger.error(f"Maintenance Loop error", exc_info=True)
+                await asyncio.sleep(3)
+        
+        self.maintenance_running = False
+        logger.info(f"MaintenanceWorker stopped")
+    #  Stats Reporting 
     async def stats_reporter_loop(self):
-        """Periodically Reports Stats"""
-        logger.info("Stats reporter started")
-
+        """Periodically report system stats"""
         while self.is_running:
-
             try:
-                await asyncio.sleep(300)
-
-                # Update uptine
+                await asyncio.sleep(getattr(self.settings, "stats_interval", 300)) 
                 if self.stats['start_time']:
-                    self.stats['uptime_seconds'] = (
-                        datetime.now() - self.stats['start_time']
-                    ).total_seconds()
+                    self.stats['uptime_seconds'] = (datetime.now() - self.stats['start_time']).total_seconds()
 
-                # Get global metrics
                 global_metrics = await self.shared_context.read("global_metrics")
-
-                # Log stats
-                logger.info(f"="*60)
+                logger.info("=" * 60)
                 logger.info("AUTONOMOUS SYSTEM STATS")
                 logger.info(f"Events Processed: {self.stats['events_processed']}")
                 logger.info(f"Agents Activated: {self.stats['agents_activated']}")
-                logger.info(f" {self.stats['uptime_seconds'] / 3600:.1f} hours")
+                logger.info(f"Uptime Hours: {self.stats['uptime_seconds']/3600:.2f}")
 
                 if global_metrics:
-                    logger.info("Today's global metrics")
-                    logger.info(f"Scraped jobs {global_metrics.get('jobs_scraped_today', 0)}")
-                    logger.info(f"Matches created {global_metrics.get('matches_created_today', 0)}")
-                    logger.info(f" Reoirts Generated {global_metrics.get('reports_generated_today', 0)}")
-
-
-                    # Fo Specific agents
-                for name , agent in self.agents.items():
-                    logger.info(f" {name}")
-                    logger.info(f" Completed: {agent.metrics['task_completed']}")
-                    logger.info(f" Failed: {agent.metrics['task_failed']}")
-                    logger.info(f" Last run {agent.metrics['last_run'] or 'never'}")
-
-                    # Get Success rate from episodic memory
-                    success_rate = self.episodic_memory.get_success_rate(name, "any")
-                    logger.info(f"Success rate: {success_rate:.2%}")
-                    
-                logger.info("="*60)
-
-            except Exception as e:
-                logger.error(f"Stats Reporter Error{e}")
-        
-    async def health_check_loop(self):
-        """Monitor System Health and restart Components"""
-        logger.info("Health Checker Started")
-
-        while self.is_running:
-
-            try:
-                await asyncio.sleep(60)
-
-                    # Check if event Monitor is alive
+                    logger.info(f"Today's metrics: {global_metrics}")
 
                 for name, agent in self.agents.items():
-                    failure_rate = agent.metrics['task_failed']
-                    total_tasks = agent.metrics['task_completed'] + agent.metrics['task_failed']
+                    success_rate = self.episodic_memory.get_success_rate(name, "any")
+                    logger.info(f"{name} - Completed: {agent.metrics['task_completed']}, Failed: {agent.metrics['task_failed']}, Success rate: {success_rate:.2%}")
 
-                    if total_tasks > 10 and failure_rate / total_tasks > 0.5:
-                        logger.warning(f"{name} has a high failure rate {failure_rate}/{total_tasks}")
-
-                        ## Get Learning from episodic memory
-                        learning = self.episodic_memory.learn_from_failures(name)
-                        logger.info(f" Recommendations {name}: {learning.get('recommendations', [])}")
-
+                logger.info("=" * 60)
             except Exception as e:
-                logger.info(f"Health check error {e}")
-    
-    async def start(self):
-        """Start the autonomous system"""
-        logger.info("="*60)
-        logger.info("Autonomous System Started")
-        logger.info(f"="*60)
-        
-        self.is_running = True
-        self.stats['start_time'] =datetime.now()
+                logger.error("stats reporter loop error: {e}")
+    # Health Check
 
-        ## Launch all tasks
+    async def health_check_loop(self):
+        """Monitor agents health and restart if necessary"""
+        while self.is_running:
+            try:
+                await asyncio.sleep(60)  
+                for name, agent in self.agents.items():
+                    total = agent.metrics['task_completed'] + agent.metrics['task_failed']
+                    if total > 10 and agent.metrics['task_failed'] / total > 0.5:
+                        logger.warning(f"{name} has high failure rate")
+                        learning = self.episodic_memory.learn_from_failures(name)
+                        logger.info(f"Recommendations for {name}: {learning.get('recommendations', [])}")
+            except Exception as e:
+                logger.error(f"Health check error: {e}")
+
+    async def start(self):
+        """Start autonomous orchestrator and all loops"""
+        async with self.started_lock:
+            if self._started:
+                logger.warning(f"AutonomousOrchestrator already started - Skipping deduplication start")
+                return
+            self._started = True
+
+        logger.info("="*60)
+        logger.info("Autonomous System Starting")
+        logger.info("brain-3 Starting")
+        logger.info("="*60)
+
+        self.is_running = True
+        self.stats['start_time'] = datetime.now()
+
+
+        self.initialize_refetch_loop()
+
         tasks = [
-            asyncio.create_task(self.event_monitor.monitor_loop(self.event_queue)),
-            asyncio.create_task(self.event_processed_loop()),
-            asyncio.create_task(self.stats_reporter_loop()),
-            asyncio.create_task(self.health_check_loop()),
-            asyncio.create_task(self.autonomous_goal_generation_loop())
+            self.safe_runner.create_task(
+                name = "event_monitor_loop",
+                coro= self.event_monitor.monitor_loop(self.event_queue),
+                severity = "critical",
+                issue="event_monitor_loop_crash",
+                source = "brain2"
+            ),
+
+            self.safe_runner.create_task(
+                name = "event_processed_loop",
+                coro = self.event_processed_loop(),
+                severity = "critical",
+                issue = "event_processed_loop_crash",
+                source = "brain2"
+            ),
+
+            self.safe_runner.create_task(
+                name = "memory_maintenance_loop",
+                coro = self.memory_maintenance_loop(),
+                severity = "critical",
+                issue = "memory_maintenance_loop_crash",
+                source = "brain2"
+            ),
+            self.safe_runner.create_task(
+                name = "stats_reporter_loop",
+                coro = self.stats_reporter_loop(),
+                severity = "critical",
+                issue = "stats_reporter_loop_crash",
+                source= "brain2"
+            ),
+            self.safe_runner.create_task(
+                name = "health_check_loop",
+                coro = self.health_check_loop(),
+                severity = "critical",
+                issue = "health_check_loop_crash",
+                source= "brain2"
+            ),
+            self.safe_runner.create_task(
+                name = "brain3_reflection_loop",
+                coro = self.brain3_reflection_loop(),
+                severity = "critical",
+                issue = "brain3_reflection_loop_crash",
+                source = "brain3"
+            ),
+            self.safe_runner.create_task(
+                name ="brain4_outcome_loop",
+                coro= self.outcome_loop.run_loop(internal_seconds=60),
+                severity = "critical",
+                issue = "brain4_outcome_loop_crash",
+                source = "brain4"
+            ),
+            self.safe_runner.create_task(
+                name="langgraph_refetch_loop",
+                coro=self.listener.refetch_job_listener(),
+                severity="critical",
+                issue = "langgraph_loop_crash",
+                source="brain2"
+            )
         ]
 
-        logger.info("ALL Systems are Operational")
-        logger.info(f" Active Agents {self.agents}")
-        logger.info("Event Monitor: Active")
-        logger.info("Decision Engine Active")
-        logger.info("Episodic Memory: Active")
-        logger.info("="*60)
-
-        ## await for all tasks
+        logger.info("All systems operational")
         try:
             await asyncio.gather(*tasks)
         except KeyboardInterrupt:
-            logger.info("Keyboard Interrupted")
-        
+            logger.info("Keyboard interrupt received")
         finally:
             await self.stop()
 
     async def stop(self):
-        "Stop the autonomous System"
-
+        """Stop autonomous orchestrator"""
         logger.info("Stopping autonomous system")
-
         self.is_running = False
+        self.maintenance_loop = False
 
-        ## Wait for agent to finish the current task
+        if hasattr(self, 'outcome_loop'):
+            await self.agent_app.shutdown()
+            
         await asyncio.sleep(2)
+        logger.info(f"Final stats: Events processed: {self.stats['events_processed']}, Agents activated: {self.stats['agents_activated']}")
 
-        logger.info("Autonomous System Stopped")
-        logger.info(f" Final Stats")
-        logger.info(f"Events Processed: {self.stats['events_processed']}")
-        logger.info(f"Total Runtime {self.stats['uptime_seconds'] / 3600:.1f} Hours")
-
-    def get_status(self):
-        """Get Current System Status"""
-        return {
-            'is_running': self.is_running,
-            'stats': self.stats,
-            'agents': {
-                name: {
-                    'is_active': agent.is_active,
-                    'metrics': agent.metrics,
-                    'success_rate': self.episodic_memory.get_success_rate(name, "any")
-                }
-                for name, agent in self.agents.items()
-            },
-            'event_queue_size': self.event_queue.qsize(),
-            'episodic_memory_size': len(self.episodic_memory.experiences)
-        }
-
-    ## Integration Hooks - create with Exsiting Workflow
+   # Integration
 
     async def notify_new_resume(self, resume_id: str, keywords: List[str]):
-        """Called by main workflow when new resume is uploaded"""
-        logger.info(f"Main workflow notificed new resume:{resume_id}")
-
-        ## Stored in shared context
         await self.shared_context.write("last_resume_id", resume_id, "main_workflow")
         await self.shared_context.write("last_resume_keywords", keywords, "main_workflow")
+        await self.event_queue.put({"type": "new_resume", "data": {"resume_id": resume_id, "keywords": keywords}})
 
-        ## Trigger event
-        await self.event_queue.put({
-            "type": "new_resume",
-            "data": {"resume_id": resume_id, "keywords": keywords}
-        })
+    async def notify_new_jobs(self, job_count: int, source:str = "scraper", target_resume_id: str = None):
+        """Notifying System about new Jobs"""
 
-    async def notify_new_jobs(self, job_count: int, source: str ="main_workflow"):
-        """Called the main workflow when jobs are found"""
-
-        logger.info(f" New workflow found {job_count} {source}")
-
-
-        ## Stored in shred context
-        await self.shared_context.write("last_job_scrape", {
-            "count": job_count,
-            "source": source,
-            "time": datetime.now().isoformat(),
+        try:
+            await self.shared_context.write(
+                key="new_jobs",
+                value={
+                    "count": job_count,
+                    "source": source,
+                    "target_resume_id": target_resume_id,
+                    "timestamp": datetime.now().isoformat() 
+                },
+                agent_name="System"
+            )
+            logger.info(f" Notifies jobs {job_count} from {source}")
+            if target_resume_id:
+                logger.info(f" Target Resume {target_resume_id}")
             
-        },"main_workflow")
-
-        # Put trigger
-        await self.event_queue.put({
-            "type": "new_jobs",
-            "data": {"job_count": job_count, "source": source}
-        })     
+            ## Triggering event with target info
+            await self.event_queue.put({
+                "type": "new_jobs",
+                "data": {
+                    "job_count": job_count,
+                    "source": source,
+                    "target_resume_id": target_resume_id
+                },
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.info(f"Failed to notify jobs {e}")
 
     async def notify_matches_created(self, match_count: int, resume_id: str):
-        """Called by mainworkflow when matches created"""
-
-        # Update shared context
         await self.shared_context.update_metrics("matches_created_today", match_count)
-
-        # check if ready for report
         if match_count >= 5:
-            logger.info("Enough matches for report generation")
-            await self.event_queue.put({
-                "type": "report_ready",
-                "data": {"resume_id": resume_id, "match_count": match_count}
-            })   
-        
-    async def notify_agent_insight(self, agent_name:str) ->Dict:
-        """get insight about specific agents"""
+            await self.event_queue.put({"type": "report_ready", "data": {"resume_id": resume_id, "match_count": match_count}})
+
+    async def notify_agent_insight(self, agent_name: str) -> Dict:
         if agent_name not in self.agents:
             return {"error": "No agent found"}
-        
         agent = self.agents[agent_name]
-        learning = self.episodic_memory.learn_from_failures(agent_name)
-        success_rate = self.episodic_memory.get_success_rate(agent_name, "any")
-        state = await self.shared_context.get_agent_state(agent_name)
-
         return {
             "agent": agent_name,
             "metrics": agent.metrics,
-            "success_rate": success_rate,
-            "learning": learning,
-            "current_state": state,
+            "success_rate": self.episodic_memory.get_success_rate(agent_name, "any"),
+            "learning": self.episodic_memory.learn_from_failures(agent_name),
+            "current_state": await self.shared_context.set_agent_state(agent_name),
             "recent_experiences": self.episodic_memory.get_similar_experiences(agent_name, "any", limit=3)
         }
-
-
-
     
+    
+   
 
 
 
@@ -388,3 +859,6 @@ class AutonomousOrchestrator:
                 
 
 
+                      
+                      
+                      

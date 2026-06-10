@@ -1,25 +1,22 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
-from typing import List, Dict, Optional
+from typing import Optional
 from pathlib import Path
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+# Get the root directory of the project
+ROOT_DIR = Path(__file__).resolve().parents[2]
 env_path = ROOT_DIR / ".env"
 
-load_dotenv(env_path)
+# load_dotenv(env_path)
 
 class Settings(BaseSettings):
     """
     Application Settings with environment variable Support
     """
-    auto_start_autonomous: bool =False
-
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False
-    )
+    
+    # Application Control
+    auto_start_autonomous: bool = False
 
     # Email Config
     SMTP_SERVER: Optional[str] = None
@@ -29,36 +26,48 @@ class Settings(BaseSettings):
     FROM_EMAIL: Optional[str] = None
     TO_EMAIL: Optional[str] = None
     CLIENT_ID: Optional[str] = None
+    DEFAULT_RECIPT_EMAIL: Optional[str] = None
 
-    
-    # Model Configuration
+
+    IMAP_SERVER: str
+    IMAP_PORT: int 
+    IMAP_FOLDER: str
+    IMAP_EMAIL: str
+
+    # API Keys
     SERPER_API_KEY: str
-    PRIMARY_MODEL: str = "openai/gpt-oss-20b"
     GROQ_API_KEY: str
     RAPID_API_KEY: str
+
+    # SLACK API URL 
+    SLACK_WEBHOOK_URL: str
+    
+    # Model Configuration
+    PRIMARY_MODEL: str = "llama-3.3-70b-versatile"
     FALLBACK_MODEL: str = "mixtral-8x7b"
-    TEMPERATURE: float = 0.6
-    MAX_TOKENS: int = 4096
+    TEMPERATURE: float = 0.0
+    MAX_TOKENS: int = 500
 
-    CHROMA: str = "./chroma_db"
-
-    model_config = SettingsConfigDict(env_file_encoding= "utf-8", env_file = str(ROOT_DIR/ ".env"))
     # MCP Configuration
     MCP_WEB_RESEARCH_URL: str = "http://localhost:8001"
     MCP_DATABASE_URL: str = "http://localhost:8002"
     MCP_ANALYTICS_URL: str = "http://localhost:8003"
     MCP_COMMS_URL: str = "http://localhost:8004"
 
-    # Database
+    # Database Configuration
     POSTGRES_URL: str = "postgresql://user:pass@localhost:5432/agent_db"
     REDIS_URL: str = "redis://localhost:6379"
-    CHROMA_PATH: str = "./data/chroma"
+    
+    # ChromaDB Path - SINGLE DEFINITION
+    # This creates a 'chroma_db' folder in your project root
+    CHROMA_PATH: str = str(ROOT_DIR / "chroma_db")
 
     # Scheduling
     TASK_CHECK_INTERVAL: int = 60
     MAX_CONCURRENT_TASKS: int = 5
     DEFAULT_MAX_ITERATIONS: int = 10
-
+    max_concurrent_agents: int =3
+    
     # Monitoring
     ENABLE_TELEMETRY: bool = True
     PROMETHEUS_PORT: int = 9090
@@ -69,9 +78,21 @@ class Settings(BaseSettings):
     MAX_RETRY_ATTEMPTS: int = 3
     ENABLE_HUMAN_IN_LOOP: bool = False
 
+    # Pydantic settings configuration
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=str(ROOT_DIR / ".env"),
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
+
+    # Observability
+    OTLP_ENDPOINT: str = "http://localhost:4317"
 
 
 if __name__ == "__main__":
     s = Settings()
     print(f"PRIMARY_MODEL: {s.PRIMARY_MODEL}")
     print(f"Has GROQ_API_KEY: {hasattr(s, 'GROQ_API_KEY')}")
+    print(f"CHROMA_PATH: {s.CHROMA_PATH}")
+    print(f"ROOT_DIR: {ROOT_DIR}")
