@@ -17,7 +17,7 @@ COPY advanced-autonomous-agent/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN python -m spacy download en_core_web_sm
-COPY . .
+COPY advanced-autonomous-agent/ .
 
 EXPOSE 8000
 ENV PYTHONPATH=/app
