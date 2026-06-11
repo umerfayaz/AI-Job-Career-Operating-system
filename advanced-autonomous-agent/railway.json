@@ -3,8 +3,5 @@
     "build": {
       "builder": "DOCKERFILE",
       "dockerfilePath": "advanced-autonomous-agent/backend/Dockerfile"
-    },
-    "deploy": {
-      "startCommand": "uvicorn backend.api.server:app --host 0.0.0.0 --port $PORT"
     }
   }
