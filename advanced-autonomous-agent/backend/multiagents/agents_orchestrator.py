@@ -25,7 +25,7 @@ from backend.core.event_bus import get_event_bus
 from backend.multiagents.backend_listener import RefetchJobListener
 from backend.core.safeRunner import SafeRunner
 from .event_monitor import EventMonitor
-from ..core.memory_system import MemoryRAGSystem
+from ..core.memory_system import MemoryRAGSystem, settings
 from backend.config.settings import Settings
 from backend.redis.redis_memory import redis_client
 
@@ -711,14 +711,6 @@ class AutonomousOrchestrator:
 
         tasks = [
             self.safe_runner.create_task(
-                name = "event_monitor_loop",
-                coro= self.event_monitor.monitor_loop(self.event_queue),
-                severity = "critical",
-                issue="event_monitor_loop_crash",
-                source = "brain2"
-            ),
-
-            self.safe_runner.create_task(
                 name = "event_processed_loop",
                 coro = self.event_processed_loop(),
                 severity = "critical",
@@ -748,20 +740,6 @@ class AutonomousOrchestrator:
                 source= "brain2"
             ),
             self.safe_runner.create_task(
-                name = "brain3_reflection_loop",
-                coro = self.brain3_reflection_loop(),
-                severity = "critical",
-                issue = "brain3_reflection_loop_crash",
-                source = "brain3"
-            ),
-            self.safe_runner.create_task(
-                name ="brain4_outcome_loop",
-                coro= self.outcome_loop.run_loop(internal_seconds=60),
-                severity = "critical",
-                issue = "brain4_outcome_loop_crash",
-                source = "brain4"
-            ),
-            self.safe_runner.create_task(
                 name="langgraph_refetch_loop",
                 coro=self.listener.refetch_job_listener(),
                 severity="critical",
@@ -769,6 +747,46 @@ class AutonomousOrchestrator:
                 source="brain2"
             )
         ]
+        if settings.BRAIN3_LOOP_ENABLED:
+            tasks.append(
+                    self.safe_runner.create_task(
+                    name="brain3_reflection_loop",
+                    coro=self.brain3_reflection_loop(),
+                    severity="critical",
+                    issue="brain3_reflection_loop_crash",
+                    source="brain3"
+                )
+            )
+
+        # Conditional loops for cheap production safety
+        else:
+            logger.warning("Brain3 loop Disabled")
+        
+        if settings.BRAIN4_OUTCOME_LOOP_ENABLED:
+            tasks.append(
+                self.safe_runner.create_task(
+                    name="brain4_outcome_loop",
+                    coro=self.outcome_loop.run_loop(internal_seconds=60),
+                    severity="critical",
+                    issue="brain4_outcome_loop_crash",
+                    source="brain4"
+                )
+            )
+        else:
+            logger.warning("Brain4 loop Disabled")
+        
+        if settings.EVENT_MONITOR_LOOP_ENABLED:
+            tasks.append(
+                self.safe_runner.create_task(
+                    name="event_monitor_loop",
+                    coro=self.event_monitor.monitor_loop(self.event_queue),
+                    severity="critical",
+                    issue="event_monitor_loop_crash",
+                    source="brain2"
+                )
+            )
+        else:
+            logger.warning("Event monitor loop Disabled")
 
         logger.info("All systems operational")
         try:

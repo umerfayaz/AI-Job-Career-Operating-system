@@ -3,6 +3,7 @@ from dateutil import parser
 from typing import Dict
 import structlog
 from backend.core.safeRunner import SafeRunner
+from backend.config.settings import Settings
 from backend.brain_outcomeLoop.fingerprint_policy import fingerprint_policy
 from backend.postgreSQL.database import PostgresDatabase
 from backend.brain_outcomeLoop.stretegic_agent import stretegic_agent 

@@ -14,6 +14,15 @@ class Settings(BaseSettings):
     """
     Application Settings with environment variable Support
     """
+
+
+    #  initial production Deployment separattion of workflows
+    DEPLOYMENT_MODE: str ="local"
+    BRAIN3_LOOP_ENABLED: bool =False
+    BRAIN4_OUTCOME_LOOP_ENABLED: bool =False
+    JAEGER_ENABLED: bool = False
+    EVENT_MONITOR_LOOP_ENABLED: bool = False
+    OTLP_ENDPOINT: str | None = None
     
     # Application Control
     auto_start_autonomous: bool = False
@@ -86,8 +95,8 @@ class Settings(BaseSettings):
         case_sensitive=False
     )
 
-    # Observability
-    OTLP_ENDPOINT: str = "http://localhost:4317"
+    # # Observability
+    # OTLP_ENDPOINT: str = "http://localhost:4317"
 
 
 if __name__ == "__main__":
