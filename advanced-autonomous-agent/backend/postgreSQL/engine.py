@@ -1,7 +1,9 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+import os
 
-DATABASE_URL = (
+DATABASE_URL = os.getenv(
+    "POSTGRES_URL",
     "postgresql+asyncpg://postgres:ashes123@postgres:5432/agentic_ai_saas"
 )
 
