@@ -81,11 +81,16 @@ User clicks apply link
 * Docker Compose
 * Jaeger observability
 
+
+
 ## AI-Powered Job Matching
 
 Hybrid retrieval and reranking pipeline used to identify the most relevant opportunities based on candidate profiles.
 
 ![Job Matching](workflow_demos/job_matching.png)
+
+
+
 
 ## Architecture
 
