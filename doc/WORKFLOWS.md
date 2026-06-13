@@ -11,10 +11,7 @@ The platform contains:
 5. No Response Workflow
 6. Dead Application Workflow
 7. Strategic Optimization Workflow
-8. Autonomous Refetch Workflow
-
-
-## Resume Upload Workflow
+8. Autonomous Refetch Workfl
 
 Purpose:
 
@@ -22,7 +19,6 @@ Convert a user resume into actionable job opportunities.
 
 Workflow:
 
-```txt
 User uploads resume
 → Resume Parser
 → Skills Extraction
@@ -42,11 +38,8 @@ Match scores
 Personalized report
 
 
----
-
 # Section 3 — Job Matching Workflow
 
-```md
 ## Job Matching Workflow
 
 Purpose:
@@ -55,7 +48,6 @@ Identify the most relevant jobs for a candidate.
 
 Workflow:
 
-```txt
 Resume
 → Embedding Generation
 → Dense Retrieval
@@ -73,12 +65,8 @@ RRF Fusion
 Cross Encoder Reranker
 
 
-
----
-
 # Section 4 — Report Generation Workflow
 
-```md
 ## Report Generation Workflow
 
 Purpose:
@@ -87,7 +75,6 @@ Transform job matches into a user-friendly report.
 
 Workflow:
 
-```txt
 Matched Jobs
 → Report Generator Agent
 → Ranking Summary
@@ -103,14 +90,11 @@ Job links
 Career recommendations
 
 
-
----
-
 # Section 5 — Applied Job Workflow
 
 This is where your platform becomes unique.
 
-```md
+
 ## Applied Job Tracking Workflow
 
 Purpose:
@@ -119,7 +103,6 @@ Track jobs after the user applies.
 
 Workflow:
 
-```txt
 User clicks Apply
 → Job saved in PostgreSQL
 → Status = applied
@@ -136,11 +119,9 @@ Tracking Metadata
 
 
 
----
 
 # Section 6 — No Response Workflow
 
-```md
 ## No Response Workflow
 
 Purpose:
@@ -153,7 +134,6 @@ Configured response window expires.
 
 Workflow:
 
-```txt
 Applied Job
 → Outcome Tracker
 → No employer response
@@ -168,13 +148,8 @@ Notify user
 Trigger Follow-Up Agent
 
 
-
-
----
-
 # Section 7 — Follow-Up Agent Workflow
 
-```md
 ## Follow-Up Agent Workflow
 
 Purpose:
@@ -183,7 +158,6 @@ Help users re-engage employers.
 
 Workflow:
 
-```txt
 Status = no_response
 → Follow-Up Agent
 → Generate follow-up email
@@ -196,14 +170,10 @@ Reminder message
 Communication suggestions
 
 
-
----
-
 # Section 8 — Dead Application Workflow
 
 This is where Brain4 becomes important.
 
-```md
 ## Dead Application Workflow
 
 Purpose:
@@ -216,7 +186,6 @@ Extended inactivity period.
 
 Workflow:
 
-```txt
 no_response
 → Monitoring Window Expires
 → Status becomes dead_application
@@ -230,14 +199,10 @@ Dead application count increases
 Source quality metrics updated
 
 
-
----
-
 # Section 9 — Strategic Agent Workflow
 
 This is your Brain3.
 
-```md
 ## Strategic Agent Workflow
 
 Purpose:
@@ -253,7 +218,6 @@ Inputs:
 
 Workflow:
 
-```txt
 Metrics Analysis
 → Failure Detection
 → Policy Creation
@@ -267,12 +231,8 @@ Switch APIs
 Modify sourcing strategy
 
 
-
----
-
 # Section 10 — Source Agent Workflow
 
-```md
 ## Source Agent Workflow
 
 Purpose:
@@ -281,7 +241,6 @@ Implement sourcing improvements.
 
 Workflow:
 
-```txt
 Strategic Policy
 → Source Agent
 → Keyword Update
@@ -306,15 +265,10 @@ AI Engineer
 LangGraph Developer
 Remote AI Developer
 
-
-
----
-
 # Section 11 — Autonomous Refetch Workflow
 
 This is the final feedback loop.
 
-```md
 ## Autonomous Refetch Workflow
 
 Purpose:
@@ -323,7 +277,6 @@ Launch improved job searches after strategic updates.
 
 Workflow:
 
-```txt
 Dead Applications Increase
 → Strategic Agent
 → Source Agent
@@ -338,18 +291,12 @@ Outcome:
 
 Continuous sourcing improvement.
 
-
-
----
-
 # Section 12 — Complete System Loop
 
 End with the strongest diagram:
 
-````md
 ## Complete Autonomous Lifecycle
 
-```mermaid
 flowchart TD
 
 A[Resume Upload]
