@@ -85,7 +85,7 @@ User clicks apply link
 
 Hybrid retrieval and reranking pipeline used to identify the most relevant opportunities based on candidate profiles.
 
-![Job Matching](workflow_demos/job-matching.png)
+![Job Matching](workflow_demos/job-matching.png.png)
 
 ## Architecture
 
