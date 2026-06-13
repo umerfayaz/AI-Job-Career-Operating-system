@@ -82,6 +82,8 @@ User clicks apply link
 * Jaeger observability
 
 
+
+
 ## Workflow Demonstrations
 
 ### Frontend Dashboard
@@ -90,6 +92,8 @@ User clicks apply link
 Modern web interface for managing autonomous workflows, agent interactions, and real-time system operations.
 
 ---
+
+
 
 
 
@@ -109,6 +113,17 @@ Comprehensive analytics dashboard providing operational insights, engagement met
 
 ---
 
+
+
+
+
+
+### Job Tracking System
+![Job Tracker](workflow_demos/job_tracker.png)
+
+Tracks application progress, workflow status, and hiring pipeline activities automatically.
+
+---
 
 
 ## Architecture
