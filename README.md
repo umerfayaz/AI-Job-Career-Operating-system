@@ -161,10 +161,10 @@ Enabled:
 
 ## Documentation
 
-* [Architecture](docs/ARCHITECTURE.md)
-* [Workflows](docs/WORKFLOWS.md)
-* [Deployment](docs/DEPLOYMENT.md)
-* [Roadmap](docs/ROADMAP.md)
+* [Architecture](doc/ARCHITECTURE.md)
+* [Workflows](doc/WORKFLOWS.md)
+* [Deployment](doc/DEPLOYMENT.md)
+* [Roadmap](doc/ROADMAP.md)
 
 ## Project Status
 
