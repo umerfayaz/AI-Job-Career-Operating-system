@@ -388,7 +388,13 @@ export function AppSidebar({
       initial={false}
       animate={{ width: expanded ? 280 : 64 }}
       transition={sidebarTransition}
-      className="relative z-[60] flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+      className="
+        fixed lg:relative
+        left-0 top-0 z-[60]
+        flex h-screen shrink-0 flex-col
+        border-r border-sidebar-border
+        bg-sidebar text-sidebar-foreground
+      "
       style={{
         backgroundImage:
           "radial-gradient(120% 60% at 50% 0%, rgb(99 102 241 / 0.10), transparent 60%)",
