@@ -142,6 +142,18 @@ Monitors inactive workflows and triggers recovery or escalation procedures autom
 
 
 
+### Follow-Up Email Automation
+![Follow-up Email](workflow_demos/followup_email.png)
+
+Automatically generates and manages professional follow-up communications.
+
+---
+
+
+
+
+
+
 ## Architecture
 
 ```mermaid
