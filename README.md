@@ -79,7 +79,7 @@ User clicks apply link
 * PostgreSQL
 * Redis
 * Docker Compose
-* Optional Jaeger observability
+* Jaeger observability
 
 ## Architecture
 
