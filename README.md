@@ -121,6 +121,18 @@ Comprehensive analytics dashboard providing operational insights, engagement met
 
 
 
+### Workflow Observability & Distributed Tracing
+![Workflow Trace](workflow_demos/backend_pbservability.png)
+
+OpenTelemetry-powered distributed tracing dashboard providing complete visibility into agent orchestration, LLM interactions, memory operations, retrieval pipelines, semantic matching, and workflow execution performance across the autonomous system.
+
+
+
+
+
+
+
+
 ### Job Tracking System
 ![Job Tracker](workflow_demos/job_tracker.png)
 
