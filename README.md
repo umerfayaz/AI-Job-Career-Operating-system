@@ -152,6 +152,16 @@ Automatically generates and manages professional follow-up communications.
 
 
 
+### AI Job Analysis Report
+![Job Report](workflow_demos/job_report.png)
+
+Detailed compatibility reports with skill analysis, qualification assessment, and intelligent recommendations.
+
+---
+
+
+
+
 
 
 ## Architecture
