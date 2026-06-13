@@ -123,6 +123,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "http://localhost:8080",
         "https://ai-job-career-operating-system-zv9r.vercel.app"
     ],
     allow_credentials=True,
