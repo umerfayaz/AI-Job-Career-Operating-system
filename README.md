@@ -163,8 +163,7 @@ Enabled:
 
 * [Architecture](doc/ARCHITECTURE.md)
 * [Workflows](doc/WORKFLOWS.md)
-* [Deployment](doc/DEPLOYMENT.md)
-* [Roadmap](doc/ROADMAP.md)
+* [Deployment](doc/DEPLOYEMENT.md)
 
 ## Project Status
 
