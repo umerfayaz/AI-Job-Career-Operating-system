@@ -974,7 +974,7 @@ const AgentDashboard = () => {
   const iscommandCenterItems = commandCenterItems.includes(activeItem);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen w-full overflow-x-hidden bg-background">
   
       {/* Sidebar */}
       <AppSidebar 
@@ -986,7 +986,7 @@ const AgentDashboard = () => {
   
       {/* Main Content */}
       <main
-        className="flex-1 relative overflow-hidden ml-0 lg:ml-0">
+        className="flex-1 min-w-0 w-full overflow-x-hidden pl-16 lg:pl-0">
     
         <div className="min-h-screen bg-background relative overflow-hidden">
   
@@ -1013,25 +1013,21 @@ const AgentDashboard = () => {
   
           {/* Header */}
           <motion.header
-
-            animate={{
-              left: sidebarWidth,
-            }}
             transition={{
               type: "spring",
               stiffness: 120,
               damping: 20
             }}
 
-            className="fixed top-0 right-0 z-50 border-b border-border/50"
+            className="fixed top-0 right-0 left-16 lg:left-[var(--sidebar-width)] z-50 border-b border-border/50"
             style={{
-              left: sidebarWidth,
+              ["--sidebar-width" as any]: `${sidebarWidth}px`,
               backgroundColor: `hsl(var(--background) / ${headerOpacity})`,
               backdropFilter: `blur(${headerBlur}px)`
             }}
           >
-            <div className="max-w-7xl mx-auto px-6 py-4">
-              <div className="flex items-center justify-between">
+            <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
   
                 {/* LEFT */}
                 <motion.div
@@ -1072,7 +1068,7 @@ const AgentDashboard = () => {
   
                 {/* RIGHT */}
                 <motion.div
-                  className="flex items-center gap-4"
+                  className="flex flex-wrap items-center gap-2 sm:gap-4"
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.5, delay: 0.1 }}
@@ -1194,9 +1190,9 @@ const AgentDashboard = () => {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.7, delay: 0.1 }}
-                className="text-5xl md:text-6xl font-bold mb-8 leading-none flex flex-col items-center gap-3"
+                className="text-3xl sm:text-5xl md:text-6xl font-bold mb-8 leading-tight flex flex-col items-center gap-3"
               >
-                <span className="gradient-text font-heading text-7xl -mt-6">AutoAgent OS</span>
+                <span className="gradient-text font-heading text-4xl sm:text-6xl md:text-7xl -mt-3 sm:-mt-6">AutoAgent OS</span>
                 <span className="text-3xl md:text-3xl text-foreground font-sans font-light tracking-widest text-muted-foreground -mt-3">Autonomous Multi-Agents</span>
                 <span className="text-muted-foreground font-light text-2xl md:text-2xl font-sans tracking-tight max-w-2xl mt-7">
                 An autonomous AI system that finds, refines, and optimizes your job search until you succeed.
@@ -1233,7 +1229,7 @@ const AgentDashboard = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-                className="flex gap-2 mb-8 glass-panel p-2"
+                className="flex gap-2 mb-8 glass-panel p-2 overflow-x-auto"
               >
                 {tabs.map(tab => (
                   <TabButton
