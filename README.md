@@ -82,6 +82,16 @@ User clicks apply link
 * Jaeger observability
 
 
+## Workflow Demonstrations
+
+### Frontend Dashboard
+![Frontend](workflow_demos/frontend.png)
+
+Modern web interface for managing autonomous workflows, agent interactions, and real-time system operations.
+
+---
+
+
 
 ## AI-Powered Job Matching
 
