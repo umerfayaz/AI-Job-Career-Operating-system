@@ -106,6 +106,9 @@ Hybrid retrieval and reranking pipeline used to identify the most relevant oppor
 
 
 
+
+
+
 ### User Metrics Dashboard
 ![User Metrics](workflow_demos/frontend_user_metrics.png)
 
@@ -124,6 +127,19 @@ Comprehensive analytics dashboard providing operational insights, engagement met
 Tracks application progress, workflow status, and hiring pipeline activities automatically.
 
 ---
+
+
+
+
+
+### No Response Detection
+![No Response](workflow_demos/no_response.png)
+
+Monitors inactive workflows and triggers recovery or escalation procedures automatically.
+
+
+
+
 
 
 ## Architecture
