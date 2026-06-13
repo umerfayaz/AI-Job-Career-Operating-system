@@ -102,6 +102,15 @@ Hybrid retrieval and reranking pipeline used to identify the most relevant oppor
 
 
 
+### User Metrics Dashboard
+![User Metrics](workflow_demos/frontend_user_metrics.png)
+
+Comprehensive analytics dashboard providing operational insights, engagement metrics, and system performance monitoring.
+
+---
+
+
+
 ## Architecture
 
 ```mermaid
