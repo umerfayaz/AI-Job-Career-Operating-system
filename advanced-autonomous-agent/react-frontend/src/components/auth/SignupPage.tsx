@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Brain, Mail, Lock, ArrowRight, Loader, Eye, EyeOff,
+  Mail, Lock, ArrowRight, Loader, Eye, EyeOff,
   Sparkles, User, CheckCircle, Shield
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -42,18 +42,9 @@ const PasswordStrength = ({ password }: { password: string }) => {
       </span>
       <div className="strength-checks">
         {checks.map((c, i) => (
-          <motion.div
-            key={i}
-            className="strength-check"
-            animate={{ opacity: c.ok ? 1 : 0.4 }}
-          >
-            <CheckCircle
-              className="check-icon"
-              style={{ color: c.ok ? '#22c55e' : 'rgba(255,255,255,0.2)' }}
-            />
-            <span style={{ color: c.ok ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)' }}>
-              {c.label}
-            </span>
+          <motion.div key={i} className="strength-check" animate={{ opacity: c.ok ? 1 : 0.4 }}>
+            <CheckCircle className="check-icon" style={{ color: c.ok ? '#22c55e' : 'rgba(255,255,255,0.2)' }} />
+            <span style={{ color: c.ok ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)' }}>{c.label}</span>
           </motion.div>
         ))}
       </div>
@@ -91,15 +82,14 @@ export default function SignupPage() {
       <motion.div className="orb orb-2" animate={{ y:[0,25,0], x:[0,-15,0] }} transition={{ duration:10, repeat:Infinity, ease:'easeInOut', delay:1 }} />
       <motion.div className="orb orb-3" animate={{ y:[0,-20,0], x:[0,10,0] }} transition={{ duration:7, repeat:Infinity, ease:'easeInOut', delay:2 }} />
 
-      <div className="auth-container signup-layout">
-        {/* Form panel */}
+      <div className="auth-container">
         <motion.div
           className="auth-form-panel"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
         >
-          <div className="form-card signup-card">
+          <div className="form-card">
             <motion.div className="form-badge" initial={{ opacity:0, y:-10 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.15 }}>
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}>
                 <Sparkles className="badge-icon" />
@@ -113,9 +103,7 @@ export default function SignupPage() {
             </motion.div>
 
             <form onSubmit={handleSubmit} className="auth-form">
-              {/* Two column row: name + email */}
               <div className="field-row">
-                {/* Full name */}
                 <motion.div className="field-group" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.3 }}>
                   <label className="field-label">Full name</label>
                   <div className={`field-wrap ${focusedField === 'name' ? 'focused' : ''}`}>
@@ -133,7 +121,6 @@ export default function SignupPage() {
                   </div>
                 </motion.div>
 
-                {/* Email */}
                 <motion.div className="field-group" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.35 }}>
                   <label className="field-label">Email address</label>
                   <div className={`field-wrap ${focusedField === 'email' ? 'focused' : ''}`}>
@@ -152,7 +139,6 @@ export default function SignupPage() {
                 </motion.div>
               </div>
 
-              {/* Password */}
               <motion.div className="field-group" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.4 }}>
                 <label className="field-label">Password</label>
                 <div className={`field-wrap ${focusedField === 'password' ? 'focused' : ''}`}>
@@ -176,7 +162,6 @@ export default function SignupPage() {
                 </AnimatePresence>
               </motion.div>
 
-              {/* Confirm password */}
               <motion.div className="field-group" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.45 }}>
                 <label className="field-label">Confirm password</label>
                 <div className={`field-wrap ${focusedField === 'confirm' ? 'focused' : ''} ${passwordMismatch ? 'error-field' : ''} ${passwordsMatch ? 'success-field' : ''}`}>
@@ -205,28 +190,15 @@ export default function SignupPage() {
                 </AnimatePresence>
               </motion.div>
 
-              {/* Terms */}
-              <motion.label
-                className="terms-row"
-                initial={{ opacity:0, y:10 }}
-                animate={{ opacity:1, y:0 }}
-                transition={{ delay:0.5 }}
-              >
-                <div
-                  className={`checkbox ${agreed ? 'checked' : ''}`}
-                  onClick={() => setAgreed(!agreed)}
-                >
+              <motion.label className="terms-row" initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.5 }}>
+                <div className={`checkbox ${agreed ? 'checked' : ''}`} onClick={() => setAgreed(!agreed)}>
                   {agreed && <CheckCircle className="checkbox-icon" />}
                 </div>
                 <span className="terms-text">
-                  I agree to the{' '}
-                  <a href="#" className="terms-link">Terms of Service</a>
-                  {' '}and{' '}
-                  <a href="#" className="terms-link">Privacy Policy</a>
+                  I agree to the <a href="#" className="terms-link">Terms of Service</a> and <a href="#" className="terms-link">Privacy Policy</a>
                 </span>
               </motion.label>
 
-              {/* Error */}
               <AnimatePresence>
                 {error && (
                   <motion.div className="error-box" initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }} exit={{ opacity:0, height:0 }}>
@@ -235,7 +207,6 @@ export default function SignupPage() {
                 )}
               </AnimatePresence>
 
-              {/* Submit */}
               <motion.button
                 type="submit"
                 disabled={isLoading || !agreed || passwordMismatch}
@@ -265,13 +236,7 @@ export default function SignupPage() {
                 </span>
               </motion.button>
 
-              {/* Trust badges */}
-              <motion.div
-                className="trust-row"
-                initial={{ opacity:0 }}
-                animate={{ opacity:1 }}
-                transition={{ delay:0.65 }}
-              >
+              <motion.div className="trust-row" initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:0.65 }}>
                 {['256-bit encryption', 'No spam ever', 'Cancel anytime'].map((t, i) => (
                   <div key={i} className="trust-item">
                     <CheckCircle className="trust-icon" />
@@ -291,208 +256,250 @@ export default function SignupPage() {
         </motion.div>
       </div>
 
-      <style>{`
-        ${baseStyles}
-
-        .signup-layout {
-          grid-template-columns: 1fr;
-          max-width: 680px;
-          padding: 40px 24px;
-        }
-
-        .signup-card { max-width: 100%; }
-
-        .field-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-        }
-        @media (max-width: 600px) {
-          .field-row { grid-template-columns: 1fr; }
-        }
-
-        .error-field {
-          border-color: rgba(239,68,68,0.5) !important;
-          background: rgba(239,68,68,0.05) !important;
-        }
-        .success-field {
-          border-color: rgba(34,197,94,0.5) !important;
-          background: rgba(34,197,94,0.05) !important;
-        }
-
-        .match-icon {
-          width: 16px; height: 16px;
-          color: #22c55e;
-          margin-right: 12px;
-          flex-shrink: 0;
-        }
-
-        .mismatch-text {
-          font-size: 12px;
-          color: #f87171;
-          margin-top: 4px;
-        }
-
-        .strength-wrap {
-          margin-top: 10px;
-          overflow: hidden;
-        }
-        .strength-bars {
-          display: flex;
-          gap: 4px;
-          margin-bottom: 6px;
-        }
-        .strength-bar {
-          flex: 1;
-          height: 3px;
-          border-radius: 2px;
-          background: rgba(255,255,255,0.08);
-          transition: background-color 0.3s;
-        }
-        .strength-label {
-          font-size: 11px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          margin-bottom: 8px;
-          display: block;
-        }
-        .strength-checks {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 5px;
-        }
-        .strength-check {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 11px;
-        }
-        .check-icon { width: 12px; height: 12px; flex-shrink: 0; }
-
-        .terms-row {
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          cursor: pointer;
-        }
-        .checkbox {
-          width: 20px; height: 20px;
-          border: 1.5px solid rgba(255,255,255,0.2);
-          border-radius: 6px;
-          flex-shrink: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-          margin-top: 1px;
-          background: rgba(255,255,255,0.03);
-        }
-        .checkbox.checked {
-          border-color: #3b82f6;
-          background: rgba(59,130,246,0.2);
-        }
-        .checkbox-icon { width: 13px; height: 13px; color: #60a5fa; }
-        .terms-text { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.5; }
-        .terms-link { color: #60a5fa; text-decoration: none; }
-        .terms-link:hover { color: #93c5fd; }
-
-        .trust-row {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 20px;
-          flex-wrap: wrap;
-        }
-        .trust-item {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          font-size: 11px;
-          color: rgba(255,255,255,0.25);
-        }
-        .trust-icon { width: 11px; height: 11px; color: rgba(255,255,255,0.2); }
-      `}</style>
+      <style>{styles}</style>
     </div>
   );
 }
 
-const baseStyles = `
+const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
 
+   *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
   .auth-root {
-    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
     background: #020408;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: block !important;
     font-family: 'DM Sans', sans-serif;
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 8px;
   }
+
   .auth-grid {
     position: fixed; inset: 0;
-    background-image: linear-gradient(rgba(99,179,237,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,179,237,0.04) 1px, transparent 1px);
+    background-image:
+      linear-gradient(rgba(99,179,237,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,179,237,0.04) 1px, transparent 1px);
     background-size: 60px 60px;
     pointer-events: none;
   }
+
   .orb { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; opacity: 0.15; }
-  .orb-1 { width:500px; height:500px; background:#3b82f6; top:-100px; left:-100px; }
-  .orb-2 { width:400px; height:400px; background:#8b5cf6; bottom:-80px; right:-80px; }
-  .orb-3 { width:300px; height:300px; background:#06b6d4; top:50%; left:50%; transform:translate(-50%,-50%); }
+  .orb-1 { width: 500px; height: 500px; background: #3b82f6; top: -100px; left: -100px; }
+  .orb-2 { width: 400px; height: 400px; background: #8b5cf6; bottom: -80px; right: -80px; }
+  .orb-3 { width: 300px; height: 300px; background: #06b6d4; top: 50%; left: 50%; transform: translate(-50%,-50%); }
 
   .auth-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    min-height: 100vh;
     width: 100%;
-    max-width: 1200px;
+    max-width: 420px;
     margin: 0 auto;
     position: relative;
     z-index: 1;
+    box-sizing: border-box;
+    min-width: 0;
   }
-  .auth-form-panel { display:flex; align-items:center; justify-content:center; padding:60px 50px; }
-  .form-card { width:100%; max-width:420px; }
 
+  .auth-form-panel {
+    width: 100%;
+    padding: 8px 0;
+  }
+
+  .form-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  /* Badge */
   .form-badge {
-    display: inline-flex; align-items: center; gap: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     padding: 6px 14px;
-    background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.25);
-    border-radius: 100px; color: #60a5fa; font-size: 12px; font-weight: 500; margin-bottom: 28px;
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.25);
+    border-radius: 100px;
+    color: #60a5fa;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 20px;
   }
-  .badge-icon { width:13px; height:13px; }
+  .badge-icon { width: 13px; height: 13px; }
 
-  .form-title { font-family:'Syne',sans-serif; font-size:36px; font-weight:800; color:white; letter-spacing:-1.5px; margin-bottom:8px; }
-  .form-subtitle { color:rgba(255,255,255,0.4); font-size:15px; margin-bottom:36px; font-weight:300; }
+  .form-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    color: white;
+    letter-spacing: -1.5px;
+    margin-bottom: 8px;
+  }
+  .form-subtitle {
+    color: rgba(255,255,255,0.4);
+    font-size: 14px;
+    margin-bottom: 28px;
+    font-weight: 300;
+  }
 
-  .auth-form { display:flex; flex-direction:column; gap:18px; }
-  .field-group { display:flex; flex-direction:column; gap:8px; }
-  .field-label { font-size:13px; font-weight:500; color:rgba(255,255,255,0.6); letter-spacing:0.3px; }
-  .field-label-row { display:flex; align-items:center; justify-content:space-between; }
+  /* Form */
+  .auth-form { display: flex; flex-direction: column; gap: 16px; }
+  .field-group { display: flex; flex-direction: column; gap: 8px; }
+  .field-label { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); letter-spacing: 0.3px; }
+
+  /* Two-col row — stacks on mobile */
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
 
   .field-wrap {
-    position:relative; display:flex; align-items:center;
-    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1);
-    border-radius:12px; transition:all 0.2s;
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    transition: all 0.2s;
+    box-sizing: border-box;
+    width: 100%;
+    overflow: hidden;
   }
-  .field-wrap.focused { border-color:rgba(59,130,246,0.6); background:rgba(59,130,246,0.05); box-shadow:0 0 0 3px rgba(59,130,246,0.1); }
-  .field-icon { width:16px; height:16px; color:rgba(255,255,255,0.25); margin-left:14px; flex-shrink:0; }
-  .field-input { flex:1; padding:14px 14px; background:transparent; border:none; outline:none; color:white; font-size:14px; font-family:'DM Sans',sans-serif; }
-  .field-input::placeholder { color:rgba(255,255,255,0.2); }
-  .eye-btn { background:none; border:none; cursor:pointer; padding:0 14px; display:flex; align-items:center; }
-  .eye-icon { width:16px; height:16px; color:rgba(255,255,255,0.3); }
+  
+  .field-group,
+  .field-wrap,
+  .field-input,
+  .auth-form {
+    min-width: 0;
+  }
+    
+  .field-wrap.focused {
+    border-color: rgba(59,130,246,0.6);
+    background: rgba(59,130,246,0.05);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+  .error-field { border-color: rgba(239,68,68,0.5) !important; background: rgba(239,68,68,0.05) !important; }
+  .success-field { border-color: rgba(34,197,94,0.5) !important; background: rgba(34,197,94,0.05) !important; }
 
-  .error-box { padding:12px 16px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:10px; color:#f87171; font-size:13px; overflow:hidden; }
+  .field-icon { width: 16px; height: 16px; color: rgba(255,255,255,0.25); margin-left: 14px; flex-shrink: 0; }
 
-  .submit-btn { position:relative; width:100%; padding:15px; border:none; border-radius:12px; cursor:pointer; overflow:hidden; background:linear-gradient(135deg,#3b82f6,#8b5cf6); margin-top:4px; }
-  .submit-btn:disabled { opacity:0.5; cursor:not-allowed; }
-  .btn-glow { position:absolute; inset:0; background:linear-gradient(135deg,#60a5fa,#a78bfa); opacity:0; transition:opacity 0.3s; }
-  .submit-btn:hover:not(:disabled) .btn-glow { opacity:1; }
-  .btn-content { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; gap:8px; color:white; font-size:15px; font-weight:600; font-family:'Syne',sans-serif; letter-spacing:0.3px; }
-  .btn-icon { width:16px; height:16px; }
+  .field-input {
+    flex: 1;
+    min-width: 0;
+    padding: 13px 12px;
+    background: transparent !important;
+    border: none;
+    outline: none;
+    color: white !important;
+    font-size: 16px; /* 16px prevents iOS auto-zoom */
+    font-family: 'DM Sans', sans-serif;
+  }
+  .field-input::placeholder { color: rgba(255,255,255,0.2); }
 
-  .switch-auth { margin-top:28px; text-align:center; color:rgba(255,255,255,0.35); font-size:14px; }
-  .switch-link { color:#60a5fa; text-decoration:none; font-weight:500; transition:color 0.2s; display:inline-flex; align-items:center; gap:4px; }
-  .switch-link:hover { color:#93c5fd; }
-  .inline-arrow { width:13px; height:13px; }
+  .eye-btn { background: none; border: none; cursor: pointer; padding: 0 14px; display: flex; align-items: center; flex-shrink: 0; }
+  .eye-icon { width: 16px; height: 16px; color: rgba(255,255,255,0.3); }
+
+  .match-icon { width: 16px; height: 16px; color: #22c55e; margin-right: 12px; flex-shrink: 0; }
+  .mismatch-text { font-size: 12px; color: #f87171; margin-top: 4px; }
+
+  /* Password strength */
+  .strength-wrap { margin-top: 10px; overflow: hidden; }
+  .strength-bars { display: flex; gap: 4px; margin-bottom: 6px; }
+  .strength-bar { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.08); }
+  .strength-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: block; }
+  .strength-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .strength-check { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .check-icon { width: 12px; height: 12px; flex-shrink: 0; }
+
+  /* Terms */
+  .terms-row { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+  .checkbox {
+    width: 20px; height: 20px;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+    margin-top: 1px;
+    background: rgba(255,255,255,0.03);
+  }
+  .checkbox.checked { border-color: #3b82f6; background: rgba(59,130,246,0.2); }
+  .checkbox-icon { width: 13px; height: 13px; color: #60a5fa; }
+  .terms-text { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.5; }
+  .terms-link { color: #60a5fa; text-decoration: none; }
+  .terms-link:hover { color: #93c5fd; }
+
+  /* Error */
+  .error-box { padding: 12px 16px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; color: #f87171; font-size: 13px; overflow: hidden; }
+
+  /* Submit */
+  .submit-btn {
+    position: relative; width: 100%; padding: 14px;
+    border: none; border-radius: 12px; cursor: pointer;
+    overflow: hidden; background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-glow { position: absolute; inset: 0; background: linear-gradient(135deg, #60a5fa, #a78bfa); opacity: 0; transition: opacity 0.3s; }
+  .submit-btn:hover:not(:disabled) .btn-glow { opacity: 1; }
+  .btn-content {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; color: white; font-size: 15px;
+    font-weight: 600; font-family: 'Syne', sans-serif; letter-spacing: 0.3px;
+  }
+  .btn-icon { width: 16px; height: 16px; }
+
+  /* Trust row */
+  .trust-row { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+  .trust-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,0.25); }
+  .trust-icon { width: 11px; height: 11px; color: rgba(255,255,255,0.2); }
+
+  /* Sign in link */
+  .switch-auth { margin-top: 24px; text-align: center; color: rgba(255,255,255,0.35); font-size: 14px; }
+  .switch-link { color: #60a5fa; text-decoration: none; font-weight: 500; transition: color 0.2s; display: inline-flex; align-items: center; gap: 4px; }
+  .switch-link:hover { color: #93c5fd; }
+  .inline-arrow { width: 13px; height: 13px; }
+
+  /* ── Mobile ── */
+  @media (max-width: 600px) {
+    .field-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .auth-root {
+      padding: 16px 12px;
+    }
+    .form-title {
+      font-size: 26px;
+      letter-spacing: -1px;
+    }
+    .form-subtitle {
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .auth-form {
+      gap: 14px;
+    }
+    .strength-checks {
+      grid-template-columns: 1fr;
+    }
+    .trust-row {
+      display: none;
+    }
+    .btn-content {
+      font-size: 14px;
+    }
+    .switch-auth {
+      margin-top: 18px;
+      font-size: 13px;
+    }
+  }
 `;
