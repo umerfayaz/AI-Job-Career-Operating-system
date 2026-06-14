@@ -210,33 +210,6 @@ class AgentApplication:
                 logger.info(f" Brain 3 -> Brain 1 connected (via brain 2)")
         
         logger.info("All brains connected")
-    
-    async def run_agentic_task(self, initial_state: Dict) -> Dict:
-        """
-        Running a single agentic task using Brain 1 (LangGraph)
-        
-        This uses: Goal planning, autonomous planner, self-improvement
-        """
-        if not self.agentic_mode or not self.orchestrator:
-            raise RuntimeError("Agentic mode not enabled. Initialize with agentic_mode=True")
-        
-        logger.info(" Running agentic task (Brain 1)")
-        
-        # If Brain 2 is active, notify it
-        if self.multi_agent_orchestrator:
-            await self._notify_brain2_task_started(initial_state)
-        
-        # Running the task
-        result = await self.orchestrator.run_autonomous_cycle(
-            initial_state,
-            continuous=True,
-            max_cycles=2
-        )
-        
-        if self.multi_agent_orchestrator:
-            await self._notify_brain2_task_completed(result)
-        
-        return result
 
     async def run_langgraph_workflow(self, initial_state: Dict, config: Dict) -> Dict:
         """
@@ -247,11 +220,6 @@ class AgentApplication:
             raise RuntimeError("Agent graph not initialized")
         
         logger.info("Running LangGraph workflow")
-        
-    
-        if self.multi_agent_orchestrator:
-            await self._notify_brain2_workflow_started(initial_state)
-        
       
         result = await self.agent_graph.graph.ainvoke(initial_state, config)
         
@@ -260,12 +228,6 @@ class AgentApplication:
             await self._notify_brain2_workflow_completed(result)
         return result
   
-
-    def get_task_state(self, task_id: str) -> Optional[Dict]:
-        """Get current state of a task"""
-        if self.orchestrator:
-            return self.orchestrator.get_task_state(task_id)
-        return None
     
     async def start_autonomous_system(self):
         """Start Brain 2 (24/7 multi-agent system)"""
@@ -290,137 +252,6 @@ class AgentApplication:
         if self.multi_agent_orchestrator and self.multi_agent_orchestrator.is_running:
             logger.info("🛑 Stopping autonomous system")
             await self.multi_agent_orchestrator.stop()
-    
-    def get_brain3_status(self) -> Dict:
-        if not self.multi_agent_orchestrator or not self.multi_agent_orchestrator.cognitive_brain:
-            return {"enabled": False, "message": "Brain 3 not initialzed"}
-    
-        brain3 = self.multi_agent_orchestrator.cognitive_brain
-
-        return {
-            "enabled": True,
-            "last_question":(
-                brain3.last_decision.dict()
-                if brain3.last_decision
-                else None
-            ),
-            "last_reflection": (
-                brain3.last_reflection_time.isoformat()
-                if brain3.last_reflection_time
-                else None
-            ),
-            "policy_state": brain3.policy_state,
-            "feedback_count":len(brain3.execution_feedback),
-            "reflection_interval_time": brain3.reflection_interval.total_seconds()
-        }
-
-    async def get_system_status(self) -> Dict:
-        """Get Complete multi-brain system status"""
-        return {
-            "system": "multi_brain_architecture",
-            "timestamp": datetime.now().isoformat(),
-
-            "brain1_langgraph": {
-                "enbaled": self.agentic_mode,
-                "initialized": self.graph_initialized,
-                "running": self.orchestrator.is_running if self.orchestrator else False,
-                "paused_agents": (
-                    list(self.orchestrator.paused_agents)
-                    if self.orchestrator
-                    else []
-                ),
-            "resource_limits": (
-                self.orchestrator.resource_limits
-                if self.orchestrator
-                else {}
-                )
-            },
-            "brain2_multi_agents": {
-                "enabled": self.autonomous_24_7,
-                "initialized": self.multi_agent_orchestrator is not None,
-                "running": (
-                    self.multi_agent_orchestrator.is_running
-                    if self.multi_agent_orchestrator
-                    else False
-                ),
-                "status": (
-                    self.multi_agent_orchestrator.get_status()
-                    if self.multi_agent_orchestrator
-                    else {}
-                )
-            },
-            "brain_stretegic": self.get_brain3_status(),
-
-            "integration": {
-                "all_brain_connected": (
-                    self.agentic_mode and
-                    self.autonomous_24_7 and
-                    self.cognitive_brain is not None
-                ),
-                "brain2_can_control_brain2": (
-                    hasattr(self.multi_agent_orchestrator, 'brain1')
-                    if self.multi_agent_orchestrator
-                    else False
-                ),
-                "brain_monitoring": (
-                    self.multi_agent_orchestrator.cognitive_brain is not None
-                    if self.multi_agent_orchestrator
-                    else None
-                )
-            }
-            
-        }
-    
-    # INTEGRATION: Brain 1 → Brain 2 Notifications
-    
-    async def _notify_brain2_task_started(self, state: Dict):
-        """Notify Brain 2 that Brain 1 started a task"""
-        try:
-            await self.multi_agent_orchestrator.shared_context.write(
-                key="langgraph_task",
-                value={
-                    "status": "running",
-                    "task_id": state.get("task_id"),
-                    "task_type": state.get("task_type"),
-                    "started_at": datetime.now().isoformat()
-                },
-                agent_name="LangGraph"
-            )
-            logger.info("   🔗 Notified Brain 2: Task started")
-        except Exception as e:
-            logger.error(f"Failed to notify Brain 2: {e}")
-    
-    async def _notify_brain2_task_completed(self, result: Dict):
-        """Notify Brain 2 that Brain 1 completed a task"""
-        try:
-            await self.multi_agent_orchestrator.shared_context.write(
-                key="langgraph_task",
-                value={
-                    "status": "completed",
-                    "completed_at": datetime.now().isoformat(),
-                    "confidence": result.get("confidence_score", 0)
-                },
-                agent_name="LangGraph"
-            )
-            logger.info(" Notified Brain 2: Task completed")
-        except Exception as e:
-            logger.error(f"Failed to notify Brain 2: {e}")
-
-    async def _notify_brain2_workflow_started(self, state: Dict):
-        """Notify Brain 2 about workflow start"""
-        try:
-            # Extracting key info
-            resume_id = state.get("resume_id")
-            keywords = state.get("job_keywords", [])
-            
-            if resume_id and keywords:
-                await self.multi_agent_orchestrator.notify_new_resume(
-                    resume_id=resume_id,
-                    keywords=keywords
-                )
-                logger.info(f"   🔗 Notified Brain 2: New resume {resume_id}")
-        except Exception as e:
-            logger.error(f"Failed to notify Brain 2: {e}")
 
     
     async def _notify_brain2_workflow_completed(self, result: Dict, user_id: str = None):
@@ -437,7 +268,7 @@ class AgentApplication:
                 await self.multi_agent_orchestrator.notify_new_jobs(
                     job_count=jobs_count,
                     source="langgraph_workflow",
-                    target_resume_id=resume_id  
+                    target_resume_id=resume_id,
                 )
                 logger.info(f" Notified Brain 2: {jobs_count} jobs found for {resume_id}")
             
@@ -482,34 +313,6 @@ class AgentApplication:
                 "reports_generated": int(reports),
             }
         })
-
-    # INTEGRATION: Brain 2 → Brain 1 Access
-    
-    def get_langgraph_nodes(self):
-        """Allow Brain 2 agents to access Brain 1 nodes"""
-        if self.agent_graph:
-            return self.agent_graph.nodes
-        return None
-    
-    async def trigger_langgraph_node(self, node_name: str, state: Dict) -> Any:
-        """
-        Allow Brain 2 to trigger specific Brain 1 nodes
-        
-        Example: ReportGeneratorAgent can call job_report_generator_node
-        """
-        if not self.agent_graph:
-            raise RuntimeError("LangGraph not initialized")
-        
-        nodes = self.agent_graph.nodes
-        node_method = getattr(nodes, node_name, None)
-        
-        if not node_method:
-            raise ValueError(f"Node '{node_name}' not found")
-        
-        logger.info(f" Brain 2 → Brain 1: Calling node '{node_name}'")
-        result = await node_method(state)
-        
-        return result
 
     # SYSTEM MANAGEMENT
     
