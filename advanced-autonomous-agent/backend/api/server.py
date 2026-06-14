@@ -839,8 +839,6 @@ async def execute_unified_job_matching(task_id: str, initial_state: dict, config
                 logger.warning(f"cleared new resume upload key for autonomous workflow {user_id}")
             
             result = await agent_app.run_langgraph_workflow(initial_state, config)
-
-            user_id = initial_state.get("user_id")
             
             matches_count = len(result.get('matched_jobs', []))
             if matches_count > 0 and agent_app.multi_agent_orchestrator:
@@ -849,8 +847,7 @@ async def execute_unified_job_matching(task_id: str, initial_state: dict, config
                     user_id, 
                     "WorkflowExecutor"
                 )
-                
-            logger.info(f"Signals available for {user_id}")
+            logger.warning(f"Resume matcher agent target_resume_created")
             
             logger.info(f" Unified workflow completed: {task_id}")
             logger.info(f"   Jobs found: {len(result.get('jobs_data', []))}")
@@ -1123,127 +1120,7 @@ async def ws_endpoint(ws: WebSocket, run_id: str):
         await ws.send_json(event)
 
 
-@app.get("/api/system/brain2")
-async def get_brain2_status():
-    agent_app = await get_agent_app()
-
-    """Get Brain 2 (Multi-Agents) status"""
-    return agent_app.get_autonomous_status()
-
-# MULTI-AGENT ENDPOINTS (Brain 2 Control)
-
-@app.get("/status/agents")
-async def get_agent_status():
-    agent_app = await get_agent_app()
-    """Get status of all multi-agents"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"error": "Multi-agent system not initialized"}
-    
-    return agent_app.multi_agent_orchestrator.get_status()
-
-
-@app.get("/status/agents/{agent_name}")
-async def get_agent_details(agent_name: str):
-    agent_app = await get_agent_app()
-
-    """Get detailed insights about a specific agent"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"error": "Multi-agent system not initialized"}
-    
-    return await agent_app.multi_agent_orchestrator.notify_agent_insight(agent_name)
-
-
-@app.post("/agents/trigger/{agent_name}")
-async def trigger_agent_manually(agent_name: str):
-    agent_app = await get_agent_app()
-
-    """Manually trigger a specific agent"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"error": "Multi-agent system not initialized"}
-    
-    if agent_name not in agent_app.multi_agent_orchestrator.agents:
-        return {"error": f"Agent '{agent_name}' not found"}
-    
-    try:
-        agent = agent_app.multi_agent_orchestrator.agents[agent_name]
-        result = await agent.run_cycle()
-        return {
-            "success": True,
-            "agent": agent_name,
-            "result": result
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-# INTEGRATION ENDPOINTS
-
-@app.post("/api/integration/notify/resume")
-async def notify_new_resume(resume_id: str, keywords: list):
-    agent_app = await get_agent_app()
-    """Manually notify Brain 2 about a new resume"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"error": "Multi-agent system not initialized"}
-    
-    await agent_app.multi_agent_orchestrator.notify_new_resume(resume_id, keywords)
-    return {"success": True, "message": f"Brain 2 notified about resume {resume_id}"}
-
-
-@app.post("/api/integration/notify/jobs")
-async def notify_new_jobs(job_count: int, source: str = "manual"):
-    agent_app = await get_agent_app()
-
-    """Manually notify Brain 2 about new jobs"""
-    if not agent_app.multi_agent_orchestrator:
-        return {"error": "Multi-agent system not initialized"}
-    
-    await agent_app.multi_agent_orchestrator.notify_new_jobs(job_count, source)
-    return {"success": True, "message": f"Brain 2 notified about {job_count} jobs"}
-
-
-    
-@app.post("/debug/refetch")
-async def debug_refetch(user_id: str = Depends(get_current_user)):
-
-        agent_app = await get_agent_app()
-
-        await agent_app.multi_agent_orchestrator.shared_context.write(
-            f"policy_approved_{user_id}",
-            {
-                "approved": True,
-                "actions": {"apply_volume": "high"},
-                "source": "manual_test",
-                "confidence": 1.0,
-                "timestamp": datetime.now().isoformat(),
-            },
-            "debug_endpoint"
-        )
-        return {"status": "refetch_triggered"}
-
-
-@app.get("/resume/status/{task_id}")
-async def resume_status(task_id: str):
-    agent_app = await get_agent_app()
-    workflow = pending_workflows.get(task_id)
-
-    if not workflow:
-        return {
-            "status": "completed_or_not_found",
-            "task_id": task_id
-        }
-    
-    state = workflow["initial_state"]
-
-    return {
-        "task_id": task_id,
-        "status": state.get("status", "running"),
-        "jobs_found": len(state.get("jobs_data", [])),
-        "matched_jobs": state.get("matched_jobs", []),
-        "final_report": state.get("final_report"),
-        "confidence": state.get("confidence_score", 0),
-        "email": state.get("user_email")
-    }
-
 # ENTRY POINT
-
 if __name__ == "__main__":
     uvicorn.run(
         app,
