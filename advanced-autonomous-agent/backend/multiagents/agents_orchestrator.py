@@ -4,7 +4,7 @@ Runs 24/7 and coordinates all agents with Cognitive Orchestrator
 """
 import asyncio
 import time
-from typing import List, Dict
+from typing import Dict
 from datetime import datetime
 import structlog
 from backend.multiagents.guardrails import JobReportGuardrails
@@ -674,21 +674,6 @@ class AutonomousOrchestrator:
                 logger.info("=" * 60)
             except Exception as e:
                 logger.error("stats reporter loop error: {e}")
-    # Health Check
-
-    async def health_check_loop(self):
-        """Monitor agents health and restart if necessary"""
-        while self.is_running:
-            try:
-                await asyncio.sleep(60)  
-                for name, agent in self.agents.items():
-                    total = agent.metrics['task_completed'] + agent.metrics['task_failed']
-                    if total > 10 and agent.metrics['task_failed'] / total > 0.5:
-                        logger.warning(f"{name} has high failure rate")
-                        learning = self.episodic_memory.learn_from_failures(name)
-                        logger.info(f"Recommendations for {name}: {learning.get('recommendations', [])}")
-            except Exception as e:
-                logger.error(f"Health check error: {e}")
 
     async def start(self):
         """Start autonomous orchestrator and all loops"""
@@ -730,13 +715,6 @@ class AutonomousOrchestrator:
                 coro = self.stats_reporter_loop(),
                 severity = "critical",
                 issue = "stats_reporter_loop_crash",
-                source= "brain2"
-            ),
-            self.safe_runner.create_task(
-                name = "health_check_loop",
-                coro = self.health_check_loop(),
-                severity = "critical",
-                issue = "health_check_loop_crash",
                 source= "brain2"
             ),
             self.safe_runner.create_task(
@@ -808,13 +786,6 @@ class AutonomousOrchestrator:
         await asyncio.sleep(2)
         logger.info(f"Final stats: Events processed: {self.stats['events_processed']}, Agents activated: {self.stats['agents_activated']}")
 
-   # Integration
-
-    async def notify_new_resume(self, resume_id: str, keywords: List[str]):
-        await self.shared_context.write("last_resume_id", resume_id, "main_workflow")
-        await self.shared_context.write("last_resume_keywords", keywords, "main_workflow")
-        await self.event_queue.put({"type": "new_resume", "data": {"resume_id": resume_id, "keywords": keywords}})
-
     async def notify_new_jobs(self, job_count: int, source:str = "scraper", target_resume_id: str = None):
         """Notifying System about new Jobs"""
 
@@ -839,7 +810,7 @@ class AutonomousOrchestrator:
                 "data": {
                     "job_count": job_count,
                     "source": source,
-                    "target_resume_id": target_resume_id
+                    "target_resume_id": target_resume_id,
                 },
                 "timestamp": datetime.now().isoformat()
             })
@@ -852,18 +823,6 @@ class AutonomousOrchestrator:
         if match_count >= 5:
             await self.event_queue.put({"type": "report_ready", "data": {"resume_id": resume_id, "match_count": match_count}})
 
-    async def notify_agent_insight(self, agent_name: str) -> Dict:
-        if agent_name not in self.agents:
-            return {"error": "No agent found"}
-        agent = self.agents[agent_name]
-        return {
-            "agent": agent_name,
-            "metrics": agent.metrics,
-            "success_rate": self.episodic_memory.get_success_rate(agent_name, "any"),
-            "learning": self.episodic_memory.learn_from_failures(agent_name),
-            "current_state": await self.shared_context.set_agent_state(agent_name),
-            "recent_experiences": self.episodic_memory.get_similar_experiences(agent_name, "any", limit=3)
-        }
     
     
    

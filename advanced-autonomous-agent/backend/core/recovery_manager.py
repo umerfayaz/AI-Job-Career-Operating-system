@@ -82,40 +82,12 @@ class RecoveryManager:
                 source = "brain2"
             )
         
-    
         elif loop_name == "memory_maintenance_loop":
             self.orchestrator.safe_runner.create_task(
                 name = "memory_maintenance_loop",
                 coro = self.multi_agent_orchestrator.memory_maintenance_loop(),
                 severity = "critical",
                 issue = "memory_maintenance_loop_crash",
-                source = "brain2"
-            )
-        
-        elif loop_name == "health_check_loop":
-            self.orchestrator.safe_runner.create_task(
-                name = "health_check_loop",
-                coro = self.multi_agent_orchestrator.health_check_loop(),
-                severity = "critical",
-                issue = "health_check_loop_crash",
-                source = "brain2"
-            )
-        
-        elif loop_name == "stats_reporter_loop":
-            self.orchestrator.safe_runner.create_task(
-                name = "stats_reporter_loop",
-                coro = self.multi_agent_orchestrator.stats_reporter_loop(),
-                severity = "critical",
-                issue = "stats_reporter_loop_crash",
-                source = "brain2"
-            )
-        
-        elif loop_name == "autonomous_goal_generation_loop":
-            self.orchestrator.safe_runner.create_task(
-                name = "autonomous_goal_generation_loop",
-                coro = self.multi_agent_orchestrator.autonomous_goal_generation_loop(),
-                severity = "critical",
-                issue = "goal_generation_loop_crash",
                 source = "brain2"
             )
 

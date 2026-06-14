@@ -930,7 +930,6 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
 
 class ReportGeneratorAgent(BaseAutonomousAgent):
     """Generate Jobs report for user with Nodes"""
-    accepted_keywords = ["report", "analysis"]
     
     def __init__(self, agent_app, memory, episodic_memory, shared_context, guardrails):
         super().__init__("ReportGeneratorAgent", agent_app, memory, episodic_memory, shared_context, guardrails)
@@ -950,7 +949,7 @@ class ReportGeneratorAgent(BaseAutonomousAgent):
 
     async def perceive(self):
         try:
-
+            
             new_match_signal = await self.shared_context.read("new_matches_available")
 
             if new_match_signal and isinstance(new_match_signal, dict):

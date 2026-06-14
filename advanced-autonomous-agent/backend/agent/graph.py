@@ -20,19 +20,12 @@ class AgentGraph:
         """
         workflow = StateGraph(AgentState)
 
-        # workflow.add_node('memory', self.nodes.memory_node)
-        # workflow.add_node('researcher', self.nodes.researcher_node)
-        # workflow.add_node('analyzer', self.nodes.analyzer_node)
-        # workflow.add_node('reasoner', self.nodes.reasoner_node)
-        # workflow.add_node('generator', self.nodes.generator_node)
-
         ##Job matching Node
 
         workflow.add_node('job_planner', self.nodes.job_planner_node)
         workflow.add_node('job_scraper', self.nodes.job_scraper_node)
         workflow.add_node('job_matcher', self.nodes.job_matcher_node)
         workflow.add_node('job_quality_checker', self.nodes.job_quality_checker_node)
-        workflow.add_node('job_report_generator', self.nodes.job_report_generator_node)
 
         # memory node
 
@@ -78,9 +71,7 @@ class AgentGraph:
         )
 
         workflow.add_edge("meta_reasoner", "memory_learning")
-        workflow.add_edge("memory_learning", "job_report_generator")
-        workflow.add_edge("job_report_generator", END)
-
+        workflow.add_edge("memory_learning", END)
 
         memory = MemorySaver()
         return workflow.compile(checkpointer=memory, debug=False)
