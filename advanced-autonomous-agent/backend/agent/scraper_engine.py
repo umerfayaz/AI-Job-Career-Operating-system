@@ -170,15 +170,13 @@ class IntelligentJobScraper:
             company = str(job.get('company', '')).strip().lower()
             url = str(job.get('url', '')).strip()
             
-            # Create unique identifier
-            # Use URL if available (most reliable)
+        
             if url and len(url) > 30:
                 job_key = url
-            # Otherwise use title + company
+       
             elif title and company:
                 job_key = f"{title}|{company}"
             else:
-                # Skip jobs without identifiers
                 continue
             
             # Add if not seen before

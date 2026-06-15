@@ -31,9 +31,7 @@ class PostgresDatabase:
     async def update_job(self, job: Dict):
 
         try:
-
             async with AsyncSessionLocal() as session:
-
                 stmt = insert(Job).values(**job)
 
                 stmt = stmt.on_conflict_do_update(

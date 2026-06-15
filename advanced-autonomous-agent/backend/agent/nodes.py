@@ -1,7 +1,6 @@
 from langchain_groq import ChatGroq
 import numpy as np
 from sentence_transformers import CrossEncoder
-import os
 import time
 import structlog
 from ..core.skills_extractor import SkillsExtractor
@@ -551,32 +550,45 @@ class AgentNodes:
 
             """
 
-            resume_snippet = state.get('resume_text','')[:500] if state.get('resume_text') else ''
+            resume_snippet = state.get('resume_text','')[:3000] if state.get('resume_text') else ''
 
             messages = [
-                SystemMessage(content=system_prompt),
                 HumanMessage(content=f"""
-                Resume  (snippet) {resume_snippet}
+                Resume:
+                {resume_snippet}
 
-                Task: {state['task']}
-                User Preferences
-                - Location : {state.get('job_location', 'Any')}
-                - Experience {state.get('experience_level', 'Any')}
-                - keywords {state.get('job_keywords', 'Any')}
+                Task: {state.get("task")}
+                User Preferences:
+                - Location: {state.get("job_location", "Any")}
+                - Experience: {state.get("experience_level", "Any")}
+                - Existing keywords: {state.get("job_keywords", [])}
 
-                Retuen only valid JSON
+                Return only valid JSON.
 
                 Schema:
                 {{
-                "job_keywords": [
-                    "python",
-                    "fastapi"
+                "job_titles": [
+                    "<best matching job title>",
+                    "<adjacent job title>"
                 ],
+                "job_keywords": [
+                    "<hard skill from resume>",
+                    "<technology from resume>",
+                    "<role keyword from resume>"
+                ],
+                "search_queries": [
+                    "<job title + top skills + location>",
+                    "<alternate search query>"
+                ],
+                "negative_keywords": [
+                    "<irrelevant keyword to avoid>"
+                ],
+                "seniority": "<junior | mid | senior>",
                 "steps": [
-                    "Scrape jobs from source",
-                    "Match resume with jobs",
-                    "Generate report",
-                    "Send email"
+                    "Create search strategy",
+                    "Scrape jobs",
+                    "Store fresh jobs",
+                    "Notify Brain2 for matching, report, and notification"
                 ]
                 }}
 
@@ -584,14 +596,14 @@ class AgentNodes:
                 - No markdown
                 - No explanations
                 - No code fences
-                - No extra text
+                - job_keywords must contain 5 to 10 real keywords
+                - job_titles must contain 2 to 5 job titles
+                - search_queries must contain 2 to 5 search queries
+                - Use only resume and user preferences
                 - Output must be parseable by json.loads()
-
-                
-                Create a search stretegy""")
+                """)
             ]
         
-            
             await self.emit_stage.emit_staging_done(
                     run_id=state.get("run_id"),
                     stage="planning"
@@ -611,7 +623,13 @@ class AgentNodes:
                     llm_span.set_attribute("llm.temperature", 0.2)
 
                     response = await self.llm.ainvoke(messages)
-                    stretegy = json.loads(response.content)
+
+                    try:
+                        stretegy = json.loads(response.content)
+                    except Exception as e:
+                        logger.error(f"Error in Planner node:{e} | raw={response.content}")
+                        stretegy = {}
+
 
                     llm_span.set_attribute("llm.latency_seconds", time.time() - llm_latency)
 
@@ -673,7 +691,7 @@ class AgentNodes:
                 'timestamp': datetime.now().isoformat()
             })
 
-            logger.info(f"Job stretegy created: {len(state['job_keywords'])}keywords")
+            logger.info(f"Job stretegy created: {len(state['job_keywords'])} keywords")
 
             state = convert_numpy_types(state)
 
