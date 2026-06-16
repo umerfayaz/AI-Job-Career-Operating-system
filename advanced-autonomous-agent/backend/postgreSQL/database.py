@@ -2,6 +2,7 @@ from sqlalchemy.dialects.postgresql import insert
 from bs4 import BeautifulSoup
 from email.header import decode_header
 from sqlalchemy import select, update, desc, distinct
+from datetime import timedelta, datetime, UTC
 from backend.postgreSQL.engine import AsyncSessionLocal
 from backend.postgreSQL.models import AgentState
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,7 +10,6 @@ from langchain_core.messages import HumanMessage
 from backend.postgreSQL.models import User
 from backend.postgreSQL.models import Job
 from langchain_groq import ChatGroq
-from datetime import datetime, timedelta
 from typing import Dict, List
 import structlog
 import email
@@ -71,7 +71,6 @@ class PostgresDatabase:
     async def track_application(self, job_id:str, user_id:str, job_metadata: Dict | None):
 
         try:
-
             if job_metadata:
 
                 job_record = {
@@ -80,18 +79,18 @@ class PostgresDatabase:
                     "job": job_metadata.get("job_title", "Unknown"),
                     "company": job_metadata.get("company", "Unknown"),
                     "status": "applied",
-                    "applied_at": datetime.now().isoformat(),
+                    "applied_at": datetime.now(UTC),
                     "outcome_at": None,
                     "source": "workflow_report",
                     "resume_version": job_metadata.get("resume_id", "v1"),
                     "last_email_check": None,
                     "message_id": None,
-                    "clicked_at": datetime.now().isoformat(),
-                    "no_response_notified": 0,
-                    "dead_application_notified": 0,
-                    "rejected_notified": 0,
-                    "interview_notified": 0,
-                    "last_followup_at": None,
+                    "clicked_at": datetime.now(UTC),
+                    "no_response_notified": False,
+                    "dead_application_notified": False,
+                    "rejected_notified": False,
+                    "interview_notified": False,
+                    "last_followup_at": datetime.now(UTC),
                     "followup_count": 0,
                 }
 
@@ -102,18 +101,18 @@ class PostgresDatabase:
                     "job": "Unknown",
                     "company": "Unknown",
                     "status": "applied",
-                    "applied_at": datetime.now().isoformat(),
-                    "outcome_at": None,
+                    "applied_at": datetime.now(UTC),
+                    "outcome_at": datetime.now(UTC),
                     "source": "workflow_report",
                     "resume_version": "v1",
-                    "last_email_check": None,
+                    "last_email_check": datetime.now(UTC),
                     "message_id": None,
-                    "clicked_at": datetime.now().isoformat(),
-                    "no_response_notified": 0,
-                    "dead_application_notified": 0,
-                    "rejected_notified": 0,
-                    "interview_notified": 0,
-                    "last_followup_at": None,
+                    "clicked_at": datetime.now(UTC),
+                    "no_response_notified": False,
+                    "dead_application_notified": False,
+                    "rejected_notified": False,
+                    "interview_notified": False,
+                    "last_followup_at": datetime.now(UTC),
                     "followup_count": 0,
                 }
 
@@ -198,7 +197,7 @@ class PostgresDatabase:
                     return None
 
                 return {
-                    "last_metrics": json.loads(row.last_metrics) if row.last_metrics else None,
+                    "last_metrics": row.last_metrics,
                     "last_fingerprint": row.last_fingerprint,
                     "last_refetch_at": row.last_refetch_at,
                     "cooldown_until": row.cooldown_until,
@@ -217,12 +216,12 @@ class PostgresDatabase:
         try:
             record_state = {
                 "user_id": user_id,
-                "last_metrics": json.dumps(data.get("last_metrics")),
+                "last_metrics": data.get("last_metrics"),
                 "last_fingerprint": data.get("last_fingerprint"),
                 "last_refetch_at": data.get("last_refetch_at"),
                 "cooldown_until": data.get("cooldown_until"),
                 "last_run_id": data.get("last_run_id"),
-                "updated_at": datetime.now().isoformat(),
+                "updated_at": datetime.now(UTC),
             }
 
             stmt = insert(AgentState).values(**record_state)
@@ -457,8 +456,8 @@ Format:
                                 .where(Job.job_id == existing.job_id)
                                 .values(
                                     status=new_status,
-                                    outcome_at=datetime.now().isoformat(),
-                                    last_email_check=datetime.now().isoformat(),
+                                    outcome_at=datetime.now(UTC),
+                                    last_email_check=datetime.now(UTC),
                                     message_id=msg_id,
                                 )
                             )
@@ -609,10 +608,10 @@ Respond in JSON:
  
                 if label != job.get("status"):
                     job["status"] = label
-                    job["outcome_at"] = datetime.now().isoformat()
+                    job["outcome_at"] = datetime.now(UTC)
                     logger.info(f"{job['job']} updated via email: {label}")
  
-            job["last_email_check"] = datetime.now().isoformat()
+            job["last_email_check"] = datetime.now(UTC)
             await self.update_job(job)
             return job["status"]
  
@@ -628,7 +627,7 @@ Respond in JSON:
                 stmt = (update(User).where(
                         User.email == email
                     ).values(
-                        last_active=datetime.now().isoformat()
+                        last_active=datetime.now(UTC)
                     )
                 )
 
@@ -645,21 +644,18 @@ Respond in JSON:
                 exc_info=True
             )
     
-    async def create_user(self, user_id: str, email: str, name: str, password_hash: str, created_at: str, last_active: str):
-
+    async def create_user(self, user_id: str, email: str, name: str, password_hash: str, created_at=None, last_active=None):
         try:
-            user_record = {
+            user_record  = {
                 "user_id": user_id,
                 "email": email,
                 "name": name,
                 "password_hash": password_hash,
-                "created_at": created_at,
-                "last_active": last_active
+                "created_at": created_at or datetime.now(UTC),
+                "last_active": last_active or datetime.now(UTC)
             }
 
-            stmt = insert(User).values(
-                **user_record
-            )
+            stmt = insert(User).values(**user_record)
 
             stmt = stmt.on_conflict_do_nothing(
                 index_elements=["email"]
@@ -669,14 +665,15 @@ Respond in JSON:
                 await session.execute(stmt)
                 await session.commit()
 
-                logger.info("User created Successfully", email=email)
+                logger.info("User created successfully", email=email)
         
         except Exception as e:
             logger.error(
                 "Failed to create user",
-                error= str(e),
+                error=str(e),
                 exc_info=True
             )
+
     
     async def get_jobs_by_user(self, user_id: str, limit: int = 1000) -> List[dict]:
 
@@ -761,7 +758,7 @@ Respond in JSON:
 
             async with AsyncSessionLocal() as session:
                 stmt = (
-                    update(Job).where(Job.job_id == job_id, Job.user_id == user_id).values(**{flag_key: 1})
+                    update(Job).where(Job.job_id == job_id, Job.user_id == user_id).values(**{flag_key: True})
                 )
 
                 await session.execute(stmt)

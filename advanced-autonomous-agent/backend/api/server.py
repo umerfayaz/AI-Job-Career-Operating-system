@@ -203,7 +203,7 @@ async def root():
     }
 
 @app.get("/apply")
-async def apply_jobs(job_id: str, user_id: str =  Depends(get_current_user)):
+async def apply_jobs(job_id: str, user_id: str):
 
     try:
         logger.info(f"Apply endpoint called {job_id} {user_id}")

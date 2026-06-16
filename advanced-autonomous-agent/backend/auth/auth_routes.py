@@ -5,7 +5,7 @@ from uuid import uuid4
 import bcrypt
 import structlog
 from backend.redis.redis_memory import redis_client
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from fastapi import APIRouter, HTTPException, Depends, Request
 from backend.application import get_agent_app
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -192,8 +192,8 @@ async def signup(body: SignupRequest, request: Request):
             email=body.email,
             name=body.name,
             password_hash=password_hash,
-            created_at=datetime.now().isoformat(),
-            last_active=datetime.now().isoformat()
+            created_at=datetime.now(UTC),
+            last_active=datetime.now(UTC)
         )
 
         token = create_token(user_id)
