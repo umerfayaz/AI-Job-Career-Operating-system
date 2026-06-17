@@ -128,3 +128,17 @@ class EmailHistory(Base):
     created_at = Column(DateTime(timezone=True), default = lambda: datetime.now(UTC), index=True)
     updated_at = Column(DateTime(timezone=True), default = lambda: datetime.now(UTC), onupdate = lambda: datetime.now(UTC))
 
+
+class ResumeHistory(Base):
+    __tablename__ = "resume_history"
+
+    user_id = Column(String, ForeignKey("users.user_id"), primary_key=True, index=True)
+    run_id = Column(String, primary_key=True, index=True)
+
+    resume_version = Column(String, nullable=False, default="v1")
+    summary = Column(Text, nullable=True)
+    skills = Column(JSONB, nullable=True)
+    experience_years = Column(Float, nullable=True)
+    source = Column(String, nullable=True, default="resume_upload")
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True)
