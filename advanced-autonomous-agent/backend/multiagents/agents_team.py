@@ -1796,20 +1796,49 @@ class NotificationAgent(BaseAutonomousAgent):
                     logger.info(f"Missing pdf path for {user_id}, skipping email")
                     continue
                 
+                email_subject = f"🎯 New Job Matches - {datetime.now().strftime('%Y-%m-%d')}"
                 # Send email
                 logger.info(f"📤 Sending email to {user_email}")
                 sent = self.email_sender.send_report(
                     to_email=user_email,
-                    subject=f"🎯 New Job Matches - {datetime.now().strftime('%Y-%m-%d')}",
+                    subject=email_subject,
                     body=html_body,
                     pdf_path =pdf_path
                 )
                 
                 if sent:
+                    await self.agent_app.multi_agent_orchestrator.outcome_database.save_email_history({
+                        "user_id": user_id,
+                        "run_id": run_id,
+                        "email_type": "job_report",
+                        "recipient": user_email,
+                        "subject": email_subject,
+                        "status": "sent",
+                        "metadata_json": {
+                            "source": "NotificationAgent",
+                            "pdf_path": pdf_path
+                        },
+                    })
+
                     logger.info(f" Email sent successfully to {user_email}")
                     del self.pending_reports[user_id]
                     sent_count += 1
+
                 else:
+                    await self.agent_app.multi_agent_orchestrator.outcome_database.save_email_history({
+                        "user_id": user_id,
+                        "run_id": run_id,
+                        "email_type": "job_report",
+                        "recipient": user_email,
+                        "subject": email_subject,
+                        "status": "failed",
+                        "error_message": "email_sender.send_report returned False",
+                        "metadata_json": {
+                            "source": "NotificationAgent",
+                            "pdf_path": pdf_path
+                        },
+                    })
+
                     logger.error(f" Failed to send email to {user_email}")
                     failed_count += 1
 
@@ -1821,7 +1850,7 @@ class NotificationAgent(BaseAutonomousAgent):
                         {
                             "source": "NotificationAgent",
                             "severity": "low",
-                            "reason": "emailed_failed",
+                            "reason": "email_failed",
                             "user_id": user_id,
                             "timestamp": datetime.now().isoformat()
                         },
