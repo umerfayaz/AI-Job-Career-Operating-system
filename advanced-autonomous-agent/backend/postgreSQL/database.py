@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage
 from backend.postgreSQL.models import User
 from backend.postgreSQL.models import Job
 from backend.postgreSQL.models import ReportHistory
+from backend.postgreSQl.models import EmailHistory
 from bs4 import BeautifulSoup
 from email.header import decode_header
 from langchain_groq import ChatGroq
@@ -870,6 +871,8 @@ Respond in JSON:
             return None
 
 
+    # Report History for agent reasoning
+
     async def save_report_history(self, report: dict):
         try:
             record = {
@@ -878,7 +881,7 @@ Respond in JSON:
                 "report_type": report.get("report_type", "job_match_report"),
                 "summary": report["summary"],
                 "top_jobs_count": report.get("top_jobs_count", 0),
-                "higest_match_score": report.get("highest_match_score"),
+                "highest_match_score": report.get("highest_match_score"),
                 "recommended_actions": report.get("recommended_actions"),
                 "email_subject": report.get("email_subject"),
                 "sent_to_email": report.get("sent_to_email"),
@@ -915,7 +918,7 @@ Respond in JSON:
                     "report_type": row.report_type,
                     "summary": row.summary,
                     "top_jobs_count": row.top_jobs_count,
-                    "higest_match_score": row.higest_match_score,
+                    "highest_match_score": row.highest_match_score,
                     "recommended_actions": row.recommended_actions,
                     "email_subject": row.email_subject,
                     "sent_to_email": row.sent_to_email,
@@ -927,6 +930,93 @@ Respond in JSON:
         except Exception as e:
             logger.error("Failed to fetch report history", error=str(e), exc_info=True)
             return []
+    
+    # Email History for agent reasoning
+
+    async def save_email_history(self, email_record: dict):
+        try:
+            record = {
+                "user_id": email_recod["user_id"],
+                "run_id": email_record.get("run_id"),
+                "email_type": email_record["email_type"],
+                "recipient": email_record["recipient"],
+                "subject": email_reord.get("subject"),
+                "status": email_record.get("status", "queued"),
+                "provider_message_id": email_record.get("provider_message_id"),
+                "error_message": email_record.get("error_message"),
+                "metadata_json": email_record.get("metadata_json"),
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC)
+            }
+
+            async with AsyncSessionLocal() as session:
+                stmt = insert(EmailHistory).values(**record)
+
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["user_id", "run_id", "email_type"],
+                    set={
+                        "recipient": stmt.excluded.recipient,
+                        "subject": stmt.excluded.subject,
+                        "status": stmt.excluded.status,
+                        "provider_message_id": stmt.excluded.provider_message_id,
+                        "error_message": stmt.excluded.error_message,
+                        "metadata_json": stmt.excluded.metadata_json,
+                        "updated_at": stmt.excluded.updated_at,
+                    },
+                )
+
+                await session.execute(stmt)
+                await session.commit()
+
+            logger.info(
+                "Email history saved",
+                user_id=email_record["user_id"],
+                run_id=email_record.get("run_id"),
+                email_type=email_record["email_type"],
+                status=email_record.get("status", "queued"),
+            )
+
+            return True
+        
+        except Exception as e:
+            logger.error("Failed to save email histiry", error=str(e), exc_info=True)
+            return False
+    
+    
+    async def get_email_history_by_user(self, user_id: str, limit: int =20):
+        try:
+            async with AsyncSessionLocal as session:
+                stmt = (
+                    select(EmailHistory).where(EmailHistory.user_id == user_id).order_by(
+                        desc(EmailHistory.created_at)).limit(limit)
+                    )
+
+                    result = await session.execute(stmt)
+                    rows = result.scalars().all()
+
+                return [
+                    {
+                        "user_id": row.user_id,
+                        "run_id": row.run_id,
+                        "email_type": row.email_type,
+                        "recipient": row.recipient,
+                        "subject": row.subject,
+                        "status": row.status,
+                        "provider_message_id": row.provider_message_id,
+                        "error_message": row.error_message,
+                        "metadata_json": row.metadata_json,
+                        "created_at": row.created_at,
+                        "updated_at": row.updated_at
+                    },
+                    for row in rows
+                ]
+        
+        except Exception as e:
+            logger.error("Failed to get user email hisotry", error=str(e), exc_info=True)
+            return []
+    
+
+
 
 
     

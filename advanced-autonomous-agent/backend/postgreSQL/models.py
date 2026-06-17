@@ -10,6 +10,8 @@ from sqlalchemy import (
 )
 from backend.postgreSQL.engine import Base
 from sqlalchemy.orm import relationship
+from datetime import datetime, UTC
+from sqlalchemy import Float
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -72,11 +74,12 @@ class AgentState(Base):
 # Source of truth for stretegic Agent to reason
 
 class AgentDecision(Base):
+    __tablename__ = "agent_decision"
 
-    users_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True, primary_key=True)
-    run_id = Column(String, nullable=True, index=True)
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True, primary_key=True)
+    run_id = Column(String, primary_key=True, index=True)
     agent_name = Column(String, nullable=False, default="Stretegic_agent")
-    decision_type = Column(String, nullable=False, index=True)
+    decision_type = Column(String, primary_key=True, index=True)
     reason = Column(Text, nullable=False)
     input_snapshot = Column(JSONB, nullable=True)
     planned_actions = Column(Text, nullable=False)
@@ -86,22 +89,42 @@ class AgentDecision(Base):
     result_summary = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
 
-    created_at = Column(DateTime(timezone=True), lambda: datetime.now(UTC), index=True)
-    updated_at =  Column(DateTime(timezone=True), lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True)
+    updated_at =  Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 
 class ReportHistory(Base):
     __tablename__ = "report_history"
 
-    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True)
-    run_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.user_id"), primary_key=True, index=True)
+    run_id = Column(String, primary_key=True, index=True)
     report_type = Column(String, nullable=False, default="job_match_report")
     summary = Column(Text, nullable=True)
     top_jobs_count = Column(Integer, nullable=False, default=0)
     highest_match_score = Column(Float, nullable=True)
-    recommend_actions = Column(JSONB, nullable=True)
+    recommended_actions = Column(JSONB, nullable=True)
 
     email_subject = Column(String, nullable=True)
     sent_to_email = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True)
+
+
+class EmailHistory(Base):
+    __tablename__ = "email_history"
+
+    user_id = Column(String, ForeignKey("users.user_id"), primary_key=True, index=True)
+    run_id = Column(String, primary_key=True, index=True)
+
+    email_type = Column(String, nullable=False)
+    recipient = Column(String, nullable=False)
+    subject = Column(String, nullable=False)
+
+    status = Column(String, nullable=False, default="queued")
+    provider_message_id = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True )
+    metadata_json = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default = lambda: datetime.now(UTC), index=True)
+    updated_at = Column(DateTime(timezone=True), default = lambda: datetime.now(UTC), onupdate = lambda: datetime.now(UTC))
+

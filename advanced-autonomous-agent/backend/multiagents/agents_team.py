@@ -1184,6 +1184,37 @@ class ReportGeneratorAgent(BaseAutonomousAgent):
                 if not report_content:
                     logger.warning(f"Failed to generate report for {user_id}")
                     continue
+
+                highest_match_score = max(
+                    [job.get("match_percentage", 0) for job in matched_jobs],
+                    default=0
+                )
+
+                report_history_payload = {
+                    "user_id": user_id,
+                    "run_id": run_id,
+                    "report_type": "job_match_report",
+                    "summary": report_content[:1500],
+                    "top_jobs_count": len(matched_jobs),
+                    "highest_match_score": highest_match_score,
+                    "recommended_actions": {
+                        "top_companies": [job.get("company") for job in matched_jobs[:5]],
+
+                        "top_roles": [job.get("job") or job.get("title") or job.get("job_title")
+                        for job in matched_jobs[:5]
+                        ],
+
+                        "top_match_score": [
+                            job.get("match_percentage", 0)
+                            for job in matched_jobs[:5]
+                        ]
+                    },
+                    "email_subject": "Your AI Job match report",
+                    "sent_to_email": user_data.get("email")
+
+                }
+
+                await self.outcome_database.save_report_history_by_user(report_history_payload)
                 
                 # Verify URLs made it into the report
                 url_count_in_report = report_content.count('](http')

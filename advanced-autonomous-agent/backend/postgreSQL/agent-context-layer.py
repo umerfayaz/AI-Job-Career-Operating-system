@@ -122,7 +122,8 @@ class UserIntelligence:
         jobs = await self.outcome_database.get_jobs_by_user(user_id)
         agent_state = await self.outcome_database.get_agent_state(user_id)
         recent_decisions = await self.decision_workflow.get_recent_agent_decision(user_id)
-        report_history = await self.outcome_database.get_report_history_by_user(user_id, limit: int =20)
+        report_history = await self.outcome_database.get_report_history_by_user(user_id, limit=20)
+        email_history = await self.outcome_database.get_email_history_by_user(user_id, limit=20)
 
         total_jobs = len(jobs)
         applied_jobs = [j for j in jobs if j.get("status") == "applied"]
@@ -162,7 +163,8 @@ class UserIntelligence:
             "no_response_jobs": no_response_jobs[:10],
             "agent_state": agent_state,
             "recent_agent_decisions": recent_decisions,
-            "report_history": report_history
+            "report_history": report_history,
+            "email_history": email_history
         }
 
 
