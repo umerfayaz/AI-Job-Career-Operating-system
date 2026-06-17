@@ -22,12 +22,13 @@ event_bus = get_event_bus()
 
 
 class OutComeLoop:
-    def __init__(self, shared_context,event_bus, outcome_database=PostgresDatabase, re_fetch_event_emitter=None,):
+    def __init__(self, shared_context,event_bus, outcome_database=PostgresDatabase, user_intelligence, re_fetch_event_emitter=None,):
         self.outcome_database = outcome_database
         self.shared_context = shared_context
         self.event_bus =event_bus
+        self.user_intelligence = user_intelligence
         self.safe_runner = SafeRunner(self.event_bus)
-        self.stretegic_agent = stretegic_agent(shared_context)
+        self.stretegic_agent = stretegic_agent(shared_context=self.shared_context, user_intelligence=self.user_intelligence)
         self.stretegy_execute = stretegyExecutor(self.shared_context, self.event_bus, self.outcome_database)
         self.follow_up_agent = FollowupAgent(self.shared_context, self.event_bus, self.outcome_database)
         self.source_agent =  SourceAgent(self.shared_context)
@@ -201,7 +202,12 @@ class OutComeLoop:
                     with tracer.start_as_current_span("brain4.stretegic_decision") as span:
                         stretegic_decision_start = time.time()
 
-                        strategic_decision = await self.stretegic_agent.decide(metrics, user_jobs)
+                        strategic_decision = await self.stretegic_agent.decide(metrics, {
+                            "user_id": user_id,
+                            "jobs": user_jobs,
+                            "run_id": run_id
+                        })
+                        
                         logger.info(f"Stretgic agent policies recommending {strategic_decision}")
                         actions = strategic_decision.get("actions", {})
 

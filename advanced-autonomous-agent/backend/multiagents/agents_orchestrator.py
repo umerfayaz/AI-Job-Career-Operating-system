@@ -25,6 +25,8 @@ from backend.core.event_bus import get_event_bus
 from backend.multiagents.backend_listener import RefetchJobListener
 from backend.core.safeRunner import SafeRunner
 from .event_monitor import EventMonitor
+from backend.postgreSQL.agent_context_layer import DecisionWorkflow, UserIntelligence
+from backend.postgreSQL.models import ReportHistory
 from ..core.memory_system import MemoryRAGSystem, settings
 from backend.config.settings import Settings
 from backend.redis.redis_memory import redis_client
@@ -52,6 +54,7 @@ class AutonomousOrchestrator:
         self.orchestrator = orchestrator
         self.memory = memory
         self.settings = Settings()
+        self.decision_workflow = DecisionWorkflow()
         self.safe_runner = SafeRunner(self.event_bus)
         self.guardrails = JobReportGuardrails()
         self.episodic_memory = EpisodicMemory(memory)
@@ -59,6 +62,12 @@ class AutonomousOrchestrator:
             memory_system=memory,
             redis_client=redis_client
         )
+
+        self.user_intelligence = UserIntelligence(
+            outcome_database = self.outcome_database,
+            decision_workflow = self.decision_workflow,
+        )
+
         self.start_time = time.time()
         self.issue_attempts = {}
         self.max_self_heal_attempts =2
@@ -77,6 +86,7 @@ class AutonomousOrchestrator:
             shared_context=self.shared_context,
             event_bus=self.event_bus,
             outcome_database=self.outcome_database,
+            user_intelligence = self.user_intelligence,
             re_fetch_event_emitter=self.trigger_refetch_jobs
         )
 
@@ -718,6 +728,13 @@ class AutonomousOrchestrator:
                 source= "brain2"
             ),
             self.safe_runner.create_task(
+                name="brain4_outcome_loop",
+                coro=self.outcome_loop.run_loop(internal_seconds=60),
+                severity="critical",
+                issue="brain4_outcome_loop_creash",
+                source="brain4"
+            )
+            self.safe_runner.create_task(
                 name="langgraph_refetch_loop",
                 coro=self.listener.refetch_job_listener(),
                 severity="critical",
@@ -740,18 +757,18 @@ class AutonomousOrchestrator:
         else:
             logger.warning("Brain3 loop Disabled")
         
-        if settings.BRAIN4_OUTCOME_LOOP_ENABLED:
-            tasks.append(
-                self.safe_runner.create_task(
-                    name="brain4_outcome_loop",
-                    coro=self.outcome_loop.run_loop(internal_seconds=60),
-                    severity="critical",
-                    issue="brain4_outcome_loop_crash",
-                    source="brain4"
-                )
-            )
-        else:
-            logger.warning("Brain4 loop Disabled")
+        # if settings.BRAIN4_OUTCOME_LOOP_ENABLED:
+        #     tasks.append(
+        #         self.safe_runner.create_task(
+        #             name="brain4_outcome_loop",
+        #             coro=self.outcome_loop.run_loop(internal_seconds=60),
+        #             severity="critical",
+        #             issue="brain4_outcome_loop_crash",
+        #             source="brain4"
+        #         )
+        #     )
+        # else:
+        #     logger.warning("Brain4 loop Disabled")
         
         if settings.EVENT_MONITOR_LOOP_ENABLED:
             tasks.append(

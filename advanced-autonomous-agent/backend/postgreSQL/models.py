@@ -69,3 +69,39 @@ class AgentState(Base):
     user = relationship("User", back_populates="agent_state")
 
 
+# Source of truth for stretegic Agent to reason
+
+class AgentDecision(Base):
+
+    users_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True, primary_key=True)
+    run_id = Column(String, nullable=True, index=True)
+    agent_name = Column(String, nullable=False, default="Stretegic_agent")
+    decision_type = Column(String, nullable=False, index=True)
+    reason = Column(Text, nullable=False)
+    input_snapshot = Column(JSONB, nullable=True)
+    planned_actions = Column(Text, nullable=False)
+    trigger_agent = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="planned")
+    confidence = Column(Float, nullable=False)
+    result_summary = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), lambda: datetime.now(UTC), index=True)
+    updated_at =  Column(DateTime(timezone=True), lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+
+class ReportHistory(Base):
+    __tablename__ = "report_history"
+
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True)
+    run_id = Column(String, nullable=False, index=True)
+    report_type = Column(String, nullable=False, default="job_match_report")
+    summary = Column(Text, nullable=True)
+    top_jobs_count = Column(Integer, nullable=False, default=0)
+    highest_match_score = Column(Float, nullable=True)
+    recommend_actions = Column(JSONB, nullable=True)
+
+    email_subject = Column(String, nullable=True)
+    sent_to_email = Column(String, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True)

@@ -1,6 +1,4 @@
 from sqlalchemy.dialects.postgresql import insert
-from bs4 import BeautifulSoup
-from email.header import decode_header
 from sqlalchemy import select, update, desc, distinct
 from datetime import timedelta, datetime, UTC
 from backend.postgreSQL.engine import AsyncSessionLocal
@@ -9,6 +7,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from backend.postgreSQL.models import User
 from backend.postgreSQL.models import Job
+from backend.postgreSQL.models import ReportHistory
+from bs4 import BeautifulSoup
+from email.header import decode_header
 from langchain_groq import ChatGroq
 from typing import Dict, List
 import structlog
@@ -867,6 +868,66 @@ Respond in JSON:
             )
 
             return None
+
+
+    async def save_report_history(self, report: dict):
+        try:
+            record = {
+                "user_id": report["user_id"],
+                "run_id": report.get("run_id"),
+                "report_type": report.get("report_type", "job_match_report"),
+                "summary": report["summary"],
+                "top_jobs_count": report.get("top_jobs_count", 0),
+                "higest_match_score": report.get("highest_match_score"),
+                "recommended_actions": report.get("recommended_actions"),
+                "email_subject": report.get("email_subject"),
+                "sent_to_email": report.get("sent_to_email"),
+                "created_at": datetime.now(UTC)
+            }
+
+            async with AsyncSessionLocal() as session:
+                stmt = insert(ReportHistory).values(**record).returning(ReportHistory.id)
+                result = await session.execute(stmt)
+                await session.commit()
+
+                report_id = result.scalar_one()
+            
+            logger.info("Report history saved", report_id=str(report_id), user_id=report["user_id"])
+            return str(report_id)
+        
+        except Exception as e:
+            logger.error("Failed to save report history", error=str(e), exc_info=True)
+            return None
+    
+    async def get_report_history_by_user(self, user_id:str, limit: int =20):
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(ReportHistory).where(ReportHistory.user_id == user_id).order_by(
+                    desc(ReportHistory.created_at)).limit(limit)
+
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+            
+            return [
+                {
+                    "user_id": row.user_id,
+                    "run_id": row.run_id,
+                    "report_type": row.report_type,
+                    "summary": row.summary,
+                    "top_jobs_count": row.top_jobs_count,
+                    "higest_match_score": row.higest_match_score,
+                    "recommended_actions": row.recommended_actions,
+                    "email_subject": row.email_subject,
+                    "sent_to_email": row.sent_to_email,
+                    "created_at": row.created_at
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            logger.error("Failed to fetch report history", error=str(e), exc_info=True)
+            return []
+
 
     
     
