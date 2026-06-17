@@ -9,6 +9,7 @@ from backend.postgreSQL.models import User
 from backend.postgreSQL.models import Job
 from backend.postgreSQL.models import ReportHistory
 from backend.postgreSQl.models import EmailHistory
+from backend.postgreSQL.models import ResumeHistory
 from bs4 import BeautifulSoup
 from email.header import decode_header
 from langchain_groq import ChatGroq
@@ -872,7 +873,6 @@ Respond in JSON:
 
 
     # Report History for agent reasoning
-
     async def save_report_history(self, report: dict):
         try:
             record = {
@@ -930,9 +930,9 @@ Respond in JSON:
         except Exception as e:
             logger.error("Failed to fetch report history", error=str(e), exc_info=True)
             return []
+
     
     # Email History for agent reasoning
-
     async def save_email_history(self, email_record: dict):
         try:
             record = {
@@ -1015,6 +1015,76 @@ Respond in JSON:
             logger.error("Failed to get user email hisotry", error=str(e), exc_info=True)
             return []
     
+    # Resume history for better agent reasoning
+    async def save_resume_history(self, resume: dict):
+        try:
+            record = {
+                "user_id": resume["user_id"],
+                "run_id": resume["run_id"],
+                "resume_version": resume.get("resume_version", "v1"),
+                "summary": resume.get("summary"),
+                "skills": resume.get("skills"),
+                "experience_years": resume.get("experience_years"),
+                "source": resume.get("source", "resume_upload"),
+                "created_at": datetime.now(UTC),
+            }
+
+            async with AsyncSessionLocal() as session:
+                stmt = insert(ResumeHistory).values(**record)
+
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["user_id", "run_id"],
+                    set_={
+                        "resume_version": stmt.excluded.resume_version,
+                        "summary": stmt.excluded.summary,
+                        "skills": stmt.excluded.skills,
+                        "experience_years": stmt.excluded.experience_years,
+                        "source": stmt.excluded.source,
+                        "created_at": stmt.excluded.created_at,
+                    },
+                )
+
+                await session.execute(stmt)
+                await session.commit()
+
+            logger.info("Resume history saved", user_id=resume["user_id"], run_id=resume["run_id"])
+            return True
+
+        except Exception as e:
+            logger.error("Failed to save resume history", error=str(e), exc_info=True)
+            return False
+
+    async def get_resume_history_by_user(self, user_id: str, limit: int = 10):
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = (
+                    select(ResumeHistory).where(ResumeHistory.user_id == user_id).order_by(
+                        desc(ResumeHistory.created_at)
+                    ).limit(limit)
+                )
+
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+
+            return [
+                {
+                    "user_id": row.user_id,
+                    "run_id": row.run_id,
+                    "resume_version": row.resume_version,
+                    "summary": row.summary,
+                    "skills": row.skills,
+                    "experience_years": row.experience_years,
+                    "source": row.source,
+                    "created_at": row.created_at,
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            logger.error("Failed to fetch resume history", error=str(e), exc_info=True)
+            return []
+
+
 
 
 
