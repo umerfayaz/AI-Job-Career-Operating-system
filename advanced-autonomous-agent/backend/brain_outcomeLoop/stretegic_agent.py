@@ -57,12 +57,11 @@ class stretegic_agent:
                     "actions": {}
                 }
             
-            logger.warning("Stretegic agent received decision contex", user_id= user_id, context=decision_context)
-            
             user_id = job.get("user_id") if isinstance(job, dict) else None
             decision_context = await self.decision_context(user_id)
             prompt = self._build_prompt(metrics, decision_context)
 
+            logger.warning(f"Stretegic agent received decision contex", user_id=user_id, decision_context=decision_context)
             logger.warning("Stretegic Prompt size recieved", characters=len(prompt))
 
             try:
@@ -113,13 +112,20 @@ class stretegic_agent:
 
                     logger.warning("Stretegic Agent Decision", result=result)
 
+                    safe_snapshot = json.loads(
+                        json.dumps(
+                            decision_context,
+                            default=str
+                        )
+                    )
+
                     await self.user_intelligence.decision_workflow.create_agent_decision({
                         "user_id":  user_id,
                         "run_id": metrics.get("run_id"),
                         "agent_name": "StretegicAgent",
                         "decision_type": result.get("intent", "unknown"),
                         "reason": result.get("reason", "No reason provided"),
-                        "input_snapshot": decision_context,
+                        "input_snapshot": safe_snapshot,
                         "planned_actions": json.dumps(actions, default=str),
                         "trigger_agent": "AutonomyLoop" if actions.get("trigger_workflow") else "",
                         "status": "planned",
@@ -131,7 +137,7 @@ class stretegic_agent:
                     llm_span.set_attribute("decision.intent", result.get("intent"))
                     llm_span.set_attribute("decision.confidence", result.get("confidence"))
                     llm_span.set_attribute("decision.apply_volume", actions.get("apply_volume"))
-                    llm_span.set_attribute("decision.follow_up_stretegy", actions.get("follow_up_stretegy"))
+                    llm_span.set_attribute("decision.follow_up_stretegy", actions.get("follow_up_stretegy", ""))
                     llm_span.set_attribute("decision.trigger_workflow", actions.get("trigger_workflow"))
                 
                 return result
