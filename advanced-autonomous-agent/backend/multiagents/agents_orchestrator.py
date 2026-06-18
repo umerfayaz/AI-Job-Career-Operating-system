@@ -26,7 +26,6 @@ from backend.multiagents.backend_listener import RefetchJobListener
 from backend.core.safeRunner import SafeRunner
 from .event_monitor import EventMonitor
 from backend.postgreSQL.agent_context_layer import DecisionWorkflow, UserIntelligence
-from backend.postgreSQL.models import ReportHistory
 from ..core.memory_system import MemoryRAGSystem, settings
 from backend.config.settings import Settings
 from backend.redis.redis_memory import redis_client
@@ -95,6 +94,8 @@ class AutonomousOrchestrator:
         self._agents_initialized = False
         # Memory Maintenance 
         self.maintenance_running = False
+
+        self.memory.postgres_db = self.outcome_database 
 
         self.system_metrics = {
             "failure_rate": 0.0,
@@ -733,7 +734,7 @@ class AutonomousOrchestrator:
                 severity="critical",
                 issue="brain4_outcome_loop_creash",
                 source="brain4"
-            )
+            ),
             self.safe_runner.create_task(
                 name="langgraph_refetch_loop",
                 coro=self.listener.refetch_job_listener(),

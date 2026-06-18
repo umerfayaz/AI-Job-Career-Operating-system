@@ -57,14 +57,18 @@ class stretegic_agent:
                     "actions": {}
                 }
             
+            logger.warning("Stretegic agent received decision contex", user_id= user_id, context=decision_context)
+            
             user_id = job.get("user_id") if isinstance(job, dict) else None
             decision_context = await self.decision_context(user_id)
             prompt = self._build_prompt(metrics, decision_context)
 
+            logger.warning("Stretegic Prompt size recieved", characters=len(prompt))
+
             try:
                 with tracer.start_as_current_span("LLM.call") as llm_span:
                     start_llm = time.time()
-                    MODEL_NAME = "openai/gpt-oss-120b"
+                    MODEL_NAME = "llama-3.3-70b-versatile"
                     llm_span.set_attribute("llm.model", MODEL_NAME)
 
                     response =  await self.client.chat.completions.create(
@@ -106,6 +110,8 @@ class stretegic_agent:
                     content =  response.choices[0].message.content
                     result=json.loads(content)
                     actions = result.get("actions", {})
+
+                    logger.warning("Stretegic Agent Decision", result=result)
 
                     await self.user_intelligence.decision_workflow.create_agent_decision({
                         "user_id":  user_id,

@@ -3,8 +3,8 @@ from backend.postgreSQL.models import AgentDecision
 from backend.postgreSQL.engine import AsyncSessionLocal
 from backend.postgreSQL.database import PostgresDatabase
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import select, update, desc, distinct
-from datetime import timedelta, datetime, UTC
+from sqlalchemy import select, update, desc
+from datetime import datetime, UTC
 
 logger = structlog.get_logger()
 
@@ -33,7 +33,7 @@ class DecisionWorkflow:
             }
 
             async with AsyncSessionLocal() as session:
-                stmt = insert(AgentDecision).values(**record).returning(AgentDecision.id)
+                stmt = insert(AgentDecision).values(**record)
                 result = await session.execute(stmt)
                 await session.commit()
 
@@ -88,7 +88,6 @@ class DecisionWorkflow:
 
                 return [
                     {
-                        "id": str(row.id),
                         "user_id": row.user_id,
                         "run_id": row.run_id,
                         "agent_name": row.agent_name,

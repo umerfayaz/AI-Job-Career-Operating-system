@@ -18,7 +18,7 @@ class MemoryRAGSystem:
     """
     Persistent memory system with RAG capabilities
     """
-    def __init__(self, persistent_directory: str = None):
+    def __init__(self, persistent_directory: str = None, postgres_db=None):
         if persistent_directory is None:
             persistent_directory = settings.CHROMA_PATH
             os.makedirs(persistent_directory, exist_ok=True)
@@ -32,6 +32,8 @@ class MemoryRAGSystem:
                 allow_reset=True
             )
         )
+
+        self.postgres_db = postgres_db
 
         self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name="BAAI/bge-large-en-v1.5",
@@ -164,6 +166,18 @@ class MemoryRAGSystem:
             metadatas=[base_metadata],
             ids=[resume_id]
         )
+
+        if self.postgres_db:
+            await self.postgres_db.save_resume_history({
+                "user_id": user_id,
+                "run_id": base_metadata.get("run_id"),
+                "resume_version": base_metadata.get("resume_version", "v1"), 
+                "summary": resume_text[:1000],
+                "skills": skills,
+                "experience_years": base_metadata.get("experience_years"),
+                "source": "resume_upload"
+            })
+
         logger.info(f" Stored resume {resume_id} for user {user_id}")
         return resume_id
 

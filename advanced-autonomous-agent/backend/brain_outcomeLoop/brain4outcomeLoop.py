@@ -3,11 +3,11 @@ from dateutil import parser
 from typing import Dict
 import structlog
 from backend.core.safeRunner import SafeRunner
-from backend.config.settings import Settings
 from backend.brain_outcomeLoop.fingerprint_policy import fingerprint_policy
 from backend.postgreSQL.database import PostgresDatabase
 from backend.brain_outcomeLoop.stretegic_agent import stretegic_agent 
 from backend.AgenticStretegies.apply_source import SourceAgent
+
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
 from backend.AgenticStretegies.apply_followup import FollowupAgent
@@ -22,7 +22,7 @@ event_bus = get_event_bus()
 
 
 class OutComeLoop:
-    def __init__(self, shared_context,event_bus, outcome_database=PostgresDatabase, user_intelligence, re_fetch_event_emitter=None,):
+    def __init__(self, shared_context,event_bus, outcome_database, user_intelligence, re_fetch_event_emitter=None,):
         self.outcome_database = outcome_database
         self.shared_context = shared_context
         self.event_bus =event_bus

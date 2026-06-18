@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage
 from backend.postgreSQL.models import User
 from backend.postgreSQL.models import Job
 from backend.postgreSQL.models import ReportHistory
-from backend.postgreSQl.models import EmailHistory
+from backend.postgreSQL.models import EmailHistory
 from backend.postgreSQL.models import ResumeHistory
 from bs4 import BeautifulSoup
 from email.header import decode_header
@@ -889,7 +889,7 @@ Respond in JSON:
             }
 
             async with AsyncSessionLocal() as session:
-                stmt = insert(ReportHistory).values(**record).returning(ReportHistory.id)
+                stmt = insert(ReportHistory).values(**record)
                 result = await session.execute(stmt)
                 await session.commit()
 
@@ -936,11 +936,11 @@ Respond in JSON:
     async def save_email_history(self, email_record: dict):
         try:
             record = {
-                "user_id": email_recod["user_id"],
+                "user_id": email_record["user_id"],
                 "run_id": email_record.get("run_id"),
                 "email_type": email_record["email_type"],
                 "recipient": email_record["recipient"],
-                "subject": email_reord.get("subject"),
+                "subject": email_record.get("subject"),
                 "status": email_record.get("status", "queued"),
                 "provider_message_id": email_record.get("provider_message_id"),
                 "error_message": email_record.get("error_message"),
@@ -954,7 +954,7 @@ Respond in JSON:
 
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["user_id", "run_id", "email_type"],
-                    set={
+                    set_={
                         "recipient": stmt.excluded.recipient,
                         "subject": stmt.excluded.subject,
                         "status": stmt.excluded.status,
@@ -985,14 +985,14 @@ Respond in JSON:
     
     async def get_email_history_by_user(self, user_id: str, limit: int =20):
         try:
-            async with AsyncSessionLocal as session:
+            async with AsyncSessionLocal() as session:
                 stmt = (
                     select(EmailHistory).where(EmailHistory.user_id == user_id).order_by(
                         desc(EmailHistory.created_at)).limit(limit)
                     )
 
-                    result = await session.execute(stmt)
-                    rows = result.scalars().all()
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
 
                 return [
                     {
@@ -1007,7 +1007,8 @@ Respond in JSON:
                         "metadata_json": row.metadata_json,
                         "created_at": row.created_at,
                         "updated_at": row.updated_at
-                    },
+                    }
+
                     for row in rows
                 ]
         

@@ -26,10 +26,10 @@ from typing import Dict, Optional
 from backend.multiagents.guardrails import JobReportGuardrails
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
+from backend.application import get_agent_app
 from backend.observability.opentelemetry import setup_observability
 from backend.core.stage_event import EmitStage
-from backend.core.event_bus import get_event_bus
-from backend.application import get_agent_app  
+from backend.core.event_bus import get_event_bus 
 from backend.postgreSQL.init_db import init_db                  
 from backend.core.email_sender import EmailSender
 from backend.tools.pdf_generator import PDFGenerator
