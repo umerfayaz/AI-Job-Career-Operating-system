@@ -1214,7 +1214,7 @@ class ReportGeneratorAgent(BaseAutonomousAgent):
 
                 }
 
-                await self.outcome_database.save_report_history_by_user(report_history_payload)
+                await self.agent_app.multi_agent_orchestrator.outcome_database.save_report_history(report_history_payload)
                 
                 # Verify URLs made it into the report
                 url_count_in_report = report_content.count('](http')

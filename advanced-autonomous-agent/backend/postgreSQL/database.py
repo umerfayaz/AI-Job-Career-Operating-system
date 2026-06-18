@@ -890,13 +890,28 @@ Respond in JSON:
 
             async with AsyncSessionLocal() as session:
                 stmt = insert(ReportHistory).values(**record)
-                result = await session.execute(stmt)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["user_id", "run_id"],
+                    set_={
+                        "report_type": stmt.excluded.report_type,
+                        "summary": stmt.excluded.summary,
+                        "top_jobs_count": stmt.excluded.top_jobs_count,
+                        "highes_match_score": stmt.excluded.highest_match_score,
+                        "recommended_actions": stmt.exlcuded.recommended_actions,
+                        "email_subject": stmt.excluded.email_subject,
+                        "sent_to_email": stmt.excluded.sent_to_email,
+                        "created_at": stmt.excluded.created_at,
+                    },
+                )
+                await session.execute(stmt)
                 await session.commit()
-
-                report_id = result.scalar_one()
             
-            logger.info("Report history saved", report_id=str(report_id), user_id=report["user_id"])
-            return str(report_id)
+            logger.info("Report history saved", user_id=report["user_id"], run_id=report.get("run_id"))
+            return {
+                "user_id": record["user_id"],
+                "run_id": record["run_id"],
+                "report_type": record["report_type"]
+            }
         
         except Exception as e:
             logger.error("Failed to save report history", error=str(e), exc_info=True)
@@ -979,7 +994,7 @@ Respond in JSON:
             return True
         
         except Exception as e:
-            logger.error("Failed to save email histiry", error=str(e), exc_info=True)
+            logger.error("Failed to save email history", error=str(e), exc_info=True)
             return False
     
     

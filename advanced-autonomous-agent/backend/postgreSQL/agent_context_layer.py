@@ -34,14 +34,38 @@ class DecisionWorkflow:
 
             async with AsyncSessionLocal() as session:
                 stmt = insert(AgentDecision).values(**record)
-                result = await session.execute(stmt)
+
+                stmt  = stmt.on_conflict_do_update(
+                    index_elements=["user_id", "run_id", "decision_type"],
+                    set_={
+                        "agent_name": stmt.excluded.agent_name,
+                        "reason": stmt.excluded.reason,
+                        "input_snapshot": stmt.excluded.input_snapshot,
+                        "planned_actions": stmt.excluded.planned_actions,
+                        "trigger_agent": stmt.excluded.trigger_agent,
+                        "status": stmt.excluded.status,
+                        "confidence": stmt.excluded.confidence,
+                        "result_summary": stmt.excluded.result_summary,
+                        "error_message": stmt.excluded.error_message,
+                        "created_at": stmt.excluded.created_at,
+                        "updated_at": stmt.excluded.updated_at
+                    }
+                )
+
+                await session.execute(stmt)
                 await session.commit()
 
-                decision_id = result.scalar_one()
-                logger.warning("Agent Decision created", decision_id=str(decision_id))
+                logger.warning("Agent Decision created", 
+                user_id=record["user_id"],
+                run_id=record["run_id"],
+                decision_type=record["decision_type"]
+            )
 
-        
-                return str(decision_id)
+            return {
+                "user_id": record["user_id"],
+                "run_id": record["run_id"],
+                "decision_type": record["decision_type"]
+            }
 
         except Exception as e:
             logger.error("Failed to create agent decision", error=str(e), exc_info=True)
@@ -49,7 +73,7 @@ class DecisionWorkflow:
 
 
     async def update_agent_decision(self, 
-        decision_id: str,
+        user_id: str,
         status: str,
         result_summary: str | None = None,
         error_message: str | None = None 
@@ -59,7 +83,7 @@ class DecisionWorkflow:
 
             async with AsyncSessionLocal() as session:
                 stmt = (
-                    update(AgentDecision).where(AgentDecision.id == decision_id).values(
+                    update(AgentDecision).where(AgentDecision.user_id == user_id).values(
                         status=status,
                         result_summary=result_summary,
                         error_message=error_message,
@@ -70,7 +94,7 @@ class DecisionWorkflow:
                 await session.execute(stmt)
                 await session.commit()
             
-            logger.warning("Agent Decision created", decision_id=decision_id, status=status)
+            logger.warning("Agent Decision created", status=status)
         
         except Exception as e:
             logger.error("Failed to create agent decision", error=str(e), exc_info=True)
@@ -88,20 +112,16 @@ class DecisionWorkflow:
 
                 return [
                     {
-                        "user_id": row.user_id,
                         "run_id": row.run_id,
                         "agent_name": row.agent_name,
                         "decision_type": row.decision_type,
                         "reason": row.reason,
-                        "input_snapshot": row.input_snapshot,
                         "planned_actions": row.planned_actions,
                         "trigger_agent": row.trigger_agent,
                         "status": row.status,
                         "confidence": row.confidence,
                         "result_summary": row.result_summary,
-                        "error_message": row.error_message,
                         "created_at": row.created_at,
-                        "updated_at": row.updated_at
                     }
 
                     for row in rows

@@ -139,6 +139,7 @@ class MemoryRAGSystem:
     async def store_resume(
         self,
         user_id: str,
+        run_id: str,
         resume_text: str,
         skills: List[str],
         experience_years: int,
@@ -150,6 +151,7 @@ class MemoryRAGSystem:
 
         base_metadata = {
             "user_id": user_id,
+            "run_id": run_id,
             "resume_id": resume_id,            
             "skills": json.dumps(skills),
             "experience_years": float(experience_years),

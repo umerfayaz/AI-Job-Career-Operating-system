@@ -116,7 +116,7 @@ class EmailHistory(Base):
     user_id = Column(String, ForeignKey("users.user_id"), primary_key=True, index=True)
     run_id = Column(String, primary_key=True, index=True)
 
-    email_type = Column(String, nullable=False)
+    email_type = Column(String, primary_key=True, nullable=False)
     recipient = Column(String, nullable=False)
     subject = Column(String, nullable=False)
 

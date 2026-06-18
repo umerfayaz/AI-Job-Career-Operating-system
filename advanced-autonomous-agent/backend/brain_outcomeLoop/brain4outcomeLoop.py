@@ -4,7 +4,6 @@ from typing import Dict
 import structlog
 from backend.core.safeRunner import SafeRunner
 from backend.brain_outcomeLoop.fingerprint_policy import fingerprint_policy
-from backend.postgreSQL.database import PostgresDatabase
 from backend.brain_outcomeLoop.stretegic_agent import stretegic_agent 
 from backend.AgenticStretegies.apply_source import SourceAgent
 
@@ -14,7 +13,7 @@ from backend.AgenticStretegies.apply_followup import FollowupAgent
 from backend.AgenticStretegies.stretegy_executor import stretegyExecutor
 from backend.brain_outcomeLoop.profile_resolver import ensure_active_search_profile
 from backend.core.event_bus import get_event_bus
-from datetime import datetime
+from datetime import datetime, UTC
 import time
 
 logger = structlog.get_logger()
@@ -236,7 +235,7 @@ class OutComeLoop:
                             await self.outcome_database.update_agent_state(user_id, {
                                 "last_metrics": metrics,
                                 "last_fingerprint": new_fingerprint_policy,
-                                "last_refetch_at": datetime.now().isoformat()
+                                "last_refetch_at": datetime.now(UTC)
                             })
                         
                         span.set_attribute("user_id", user_id)

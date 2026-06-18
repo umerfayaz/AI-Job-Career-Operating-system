@@ -58,6 +58,7 @@ class stretegic_agent:
                 }
             
             user_id = job.get("user_id") if isinstance(job, dict) else None
+            run_id = job.get("run_id") or metrics.get("run_id")
             decision_context = await self.decision_context(user_id)
             prompt = self._build_prompt(metrics, decision_context)
 
@@ -121,7 +122,7 @@ class stretegic_agent:
 
                     await self.user_intelligence.decision_workflow.create_agent_decision({
                         "user_id":  user_id,
-                        "run_id": metrics.get("run_id"),
+                        "run_id": run_id,
                         "agent_name": "StretegicAgent",
                         "decision_type": result.get("intent", "unknown"),
                         "reason": result.get("reason", "No reason provided"),

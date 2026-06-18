@@ -1393,6 +1393,10 @@ class AgentNodes:
                 user_id=state.get("user_id")
                 if not user_id:
                     raise ValueError("Missing authentication user id")
+                
+                run_id=state.get("run_id")
+                if not run_id:
+                    raise ValueError("Missing run_id in memory storage node")
 
                 if resume_text:
                     await self.emit_stage.emit_staging_start(
@@ -1408,6 +1412,7 @@ class AgentNodes:
                     #Store Resume
                     resume_id = await self.agent_app.memory.store_resume(
                         user_id =user_id,
+                        run_id=run_id,
                         resume_text=resume_text,
                         skills=skills,
                         experience_years=self._estimate_experience(resume_text),

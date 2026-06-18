@@ -728,13 +728,20 @@ class AutonomousOrchestrator:
                 issue = "stats_reporter_loop_crash",
                 source= "brain2"
             ),
-            self.safe_runner.create_task(
-                name="brain4_outcome_loop",
-                coro=self.outcome_loop.run_loop(internal_seconds=60),
-                severity="critical",
-                issue="brain4_outcome_loop_creash",
-                source="brain4"
-            ),
+            # self.safe_runner.create_task(
+            #     name="brain3_reflection_loop",
+            #     coro=self.brain3_reflection_loop(),
+            #     severity="critical",
+            #     issue="brain3_reflection_loop_crashed",
+            #     source="brain3"
+            # ),
+            # self.safe_runner.create_task(
+            #     name="brain4_outcome_loop",
+            #     coro=self.outcome_loop.run_loop(internal_seconds=60),
+            #     severity="critical",
+            #     issue="brain4_outcome_loop_creash",
+            #     source="brain4"
+            # ),
             self.safe_runner.create_task(
                 name="langgraph_refetch_loop",
                 coro=self.listener.refetch_job_listener(),
@@ -758,18 +765,18 @@ class AutonomousOrchestrator:
         else:
             logger.warning("Brain3 loop Disabled")
         
-        # if settings.BRAIN4_OUTCOME_LOOP_ENABLED:
-        #     tasks.append(
-        #         self.safe_runner.create_task(
-        #             name="brain4_outcome_loop",
-        #             coro=self.outcome_loop.run_loop(internal_seconds=60),
-        #             severity="critical",
-        #             issue="brain4_outcome_loop_crash",
-        #             source="brain4"
-        #         )
-        #     )
-        # else:
-        #     logger.warning("Brain4 loop Disabled")
+        if settings.BRAIN4_OUTCOME_LOOP_ENABLED:
+            tasks.append(
+                self.safe_runner.create_task(
+                    name="brain4_outcome_loop",
+                    coro=self.outcome_loop.run_loop(internal_seconds=60),
+                    severity="critical",
+                    issue="brain4_outcome_loop_crash",
+                    source="brain4"
+                )
+            )
+        else:
+            logger.warning("Brain4 loop Disabled")
         
         if settings.EVENT_MONITOR_LOOP_ENABLED:
             tasks.append(
