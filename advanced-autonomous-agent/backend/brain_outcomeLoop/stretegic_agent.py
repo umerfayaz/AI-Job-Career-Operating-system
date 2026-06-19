@@ -21,9 +21,10 @@ class stretegic_agent:
 
     async def decision_context(self, user_id: str):
         user_snapshot = await self.user_intelligence.get_user_intelligence(user_id)
+        summarized_context = self.user_intelligence.build_executive_summary(user_snapshot)
 
         return {
-            "user_snapshot": user_snapshot
+            "executive_summary": summarized_context
         }
 
     async def decide(self, metrics: dict, job):
@@ -160,7 +161,7 @@ class stretegic_agent:
                     llm_span.set_attribute("decision.observe", json.dumps(result.get("observe", {}), default=str))
                     llm_span.set_attribute("decision.plan", json.dumps(result.get("plan", {}), default=str))
                     llm_span.set_attribute("decision.act", json.dumps(result.get("act", {}), default=str))
-                    llm_span.set_attribute("decision.actions", json.dumps("actions", default=str))
+                    llm_span.set_attribute("decision.actions", json.dumps(actions, default=str))
                     llm_span.set_attribute("decision.reason", json.dumps(result.get("reason", {}), default=str))
                 
                 return result

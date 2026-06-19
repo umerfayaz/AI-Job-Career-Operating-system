@@ -187,5 +187,124 @@ class UserIntelligence:
             "email_history": email_history,
             "resume_history": resume_history
         }
+    
+    def build_executive_summary(self, row: dict) -> dict:
+        user = row.get("user", {})
+        jobs = row.get("recent_jobs", [])
+        reports = row.get("report_history", [])
+        emails = row.get("email_history", [])
+        resumes = row.get("resume_history", [])
+        decisions = row.get("recent_agent_decisions", [])
+        metrics = row.get("job_metrics", {})
+        
+        # Metrics for llm to fetch
+        total_jobs = metrics.get("total_jobs", 0)
+        applied_count = metrics.get("applied_count", 0)
+        interview_count = metrics.get("interview_count", 0)
+        rejected_count = metrics.get("rejected_count", 0)
+        no_response_count = metrics.get("no_response_count", 0)
+
+        if total_jobs == 0:
+            application_health = "insufficient_data"
+        elif interview_count > 0:
+            application_health = "positive_signal"
+        elif rejected_count >= 3:
+            application_health = "resume_or_fit_problem"
+        elif no_response_count >= 3:
+            application_health = "targeting_or_visibility_problem"
+        elif applied_count > 0:
+            application_health = "early_stage_waiting"
+        else:
+            application_health = "insufficient_data"
+
+        latest_resume = resumes[0] if resumes else {}
+        latest_report = reports[0] if reports else {}
+
+        clicked_jobs = [
+            {
+                "title": j.get("job") or j.get("title"),
+                "company": j.get("company"),
+                "status": j.get("status"),
+                "clicked_at": str(j.get("clicked_at")) if j.get("clicked_at") else None,
+            }
+            for j in jobs[:5]
+        ]
+
+        return {
+            "user": {
+                "name": user.get("name"),
+                "user_id": user.get("user_id"),
+            },
+            "career_signal": {
+                "latest_resume_direction": latest_resume.get("summary", "")[:300],
+                "latest_skills": latest_resume.get("skills", [])[:10],
+                "experience_years": latest_resume.get("experience_years"),
+                "resume_trend": [
+                    {
+                        "resume_version": r.get("resume_version", "v1"),
+                        "direction_hint": r.get("summary", "")[:120],
+                    }
+                    for r in resumes[:3]
+                ],
+            },
+            "behavior_signal": {
+                "recently_clicked_jobs": clicked_jobs,
+                "clicked_jobs_count": len(clicked_jobs),
+            },
+            "market_signal": {
+                "latest_report_top_roles": (
+                    latest_report.get("recommended_actions", {}).get("top_roles", [])[:5]
+                    if latest_report else []
+                ),
+                "latest_report_top_companies": (
+                    latest_report.get("recommended_actions", {}).get("top_companies", [])[:5]
+                    if latest_report else []
+                ),
+                "highest_match_score": latest_report.get("highest_match_score"),
+            },
+            "execution_signal": {
+                "emails_sent": len([e for e in emails if e.get("status") == "sent"]),
+                "recent_email_statuses": [
+                    {
+                        "type": e.get("email_type"),
+                        "status": e.get("status"),
+                        "subject": e.get("subject"),
+                    }
+                    for e in emails[:3]
+                ],
+            },
+            "performance_signal": {
+                "application_health": application_health,
+                "total_jobs": total_jobs,
+                "applied_count": applied_count,
+                "interview_count": interview_count,
+                "rejected_count": rejected_count,
+                "no_response_count": no_response_count,
+                "main_signal": (
+                    "Not enough outcome data yet"
+                    if application_health == "insufficient_data"
+                    else "Applications are still waiting for response"
+                    if application_health == "early_stage_waiting"
+                    else "Some applications are converting into interviews"
+                    if application_health == "positive_signal"
+                    else "Rejections suggest resume/role fit may need improvement"
+                    if application_health == "resume_or_fit_problem"
+                    else "No responses suggest targeting, timing, or visibility problem"
+                    if application_health == "targeting_or_visibility_problem"
+                    else "No clear performance signal yet"
+                ),
+            },
+            "memory_signal": {
+                "recent_strategy_summaries": [
+                    {
+                        "decision_type": d.get("decision_type"),
+                        "reason": d.get("reason"),
+                        "confidence": d.get("confidence"),
+                    }
+                    for d in decisions[:3]
+                ],
+              },
+            }
+        
 
 
