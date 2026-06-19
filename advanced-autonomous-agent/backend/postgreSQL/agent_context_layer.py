@@ -182,7 +182,7 @@ class UserIntelligence:
             "recent_interviews": interview_jobs[:10],
             "no_response_jobs": no_response_jobs[:10],
             "agent_state": agent_state,
-            "recent_agent_decisions": recent_decisions,
+            "recent_agent_decisions": [],
             "report_history": report_history,
             "email_history": email_history,
             "resume_history": resume_history

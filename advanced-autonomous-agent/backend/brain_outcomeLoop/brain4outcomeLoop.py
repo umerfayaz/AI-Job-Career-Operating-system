@@ -194,54 +194,54 @@ class OutComeLoop:
                 state = await self.outcome_database.get_agent_state(user_id)
                 last_metrics = state["last_metrics"] if state else None
 
-                if last_metrics == metrics:
-                    logger.info("Skipping stretgic agent workflow same metrics detected")
-                else:
-                    # Observability tracing with decisions
-                    with tracer.start_as_current_span("brain4.stretegic_decision") as span:
-                        stretegic_decision_start = time.time()
+                # if last_metrics == metrics:
+                #     logger.info("Skipping stretgic agent workflow same metrics detected")
+                # else:
+                # Observability tracing with decisions
+                with tracer.start_as_current_span("brain4.stretegic_decision") as span:
+                    stretegic_decision_start = time.time()
 
-                        strategic_decision = await self.stretegic_agent.decide(metrics, {
-                            "user_id": user_id,
-                            "jobs": user_jobs,
-                            "run_id": run_id
+                    strategic_decision = await self.stretegic_agent.decide(metrics, {
+                        "user_id": user_id,
+                        "jobs": user_jobs,
+                        "run_id": run_id
+                    })
+                    
+                    logger.info(f"Stretgic agent policies recommending {strategic_decision}")
+                    actions = strategic_decision.get("actions", {})
+
+                    new_fingerprint_policy = fingerprint_policy(actions)
+
+                    last_fingerprint_policy = state["last_fingerprint"] if state else None
+
+                    if new_fingerprint_policy == last_fingerprint_policy:
+                            logger.info("Strategic agent proposed identical policy - skipped")
+                            skip_strategy = True
+
+                    if not skip_strategy:
+                        # Calling Stretegy Executor here to execute the Agents 
+                        await self.stretegy_execute.execute(actions, user_id, run_id)
+                        logger.warning(f"Calling stretegy in outcome loop for {run_id}")
+
+                        await self.shared_context.write(
+                                key=f"policy_proposal_{user_id}",
+                                value=strategic_decision,
+                                agent_name="strategic_agent",
+                            )
+                        logger.info(f"Outcome loop policy updated: {strategic_decision}")
+                        wrote_new_proposal = True
+
+                        # Updating agent state memory
+                        await self.outcome_database.update_agent_state(user_id, {
+                            "last_metrics": metrics,
+                            "last_fingerprint": new_fingerprint_policy,
+                            "last_refetch_at": datetime.now(UTC)
                         })
-                        
-                        logger.info(f"Stretgic agent policies recommending {strategic_decision}")
-                        actions = strategic_decision.get("actions", {})
-
-                        new_fingerprint_policy = fingerprint_policy(actions)
-
-                        last_fingerprint_policy = state["last_fingerprint"] if state else None
-
-                        if new_fingerprint_policy == last_fingerprint_policy:
-                                logger.info("Strategic agent proposed identical policy - skipped")
-                                skip_strategy = True
-
-                        if not skip_strategy:
-                            # Calling Stretegy Executor here to execute the Agents 
-                            await self.stretegy_execute.execute(actions, user_id, run_id)
-                            logger.warning(f"Calling stretegy in outcome loop for {run_id}")
-
-                            await self.shared_context.write(
-                                    key=f"policy_proposal_{user_id}",
-                                    value=strategic_decision,
-                                    agent_name="strategic_agent",
-                                )
-                            logger.info(f"Outcome loop policy updated: {strategic_decision}")
-                            wrote_new_proposal = True
-
-                            # Updating agent state memory
-                            await self.outcome_database.update_agent_state(user_id, {
-                                "last_metrics": metrics,
-                                "last_fingerprint": new_fingerprint_policy,
-                                "last_refetch_at": datetime.now(UTC)
-                            })
-                        
-                        span.set_attribute("user_id", user_id)
-                        span.set_attribute("metrics.reply_rate", metrics["reply_rate"])
-                        span.set_attribute("metrics.rejection_rate", metrics["rejection_rate"])
-                        span.set_attribute("stretegic_decision.latency_seconds", time.time() - stretegic_decision_start)
+                    
+                    span.set_attribute("user_id", user_id)
+                    span.set_attribute("metrics.reply_rate", metrics["reply_rate"])
+                    span.set_attribute("metrics.rejection_rate", metrics["rejection_rate"])
+                    span.set_attribute("stretegic_decision.latency_seconds", time.time() - stretegic_decision_start)
 
                 approved = await self.shared_context.read(f"policy_approved_{user_id}")
                 if wrote_new_proposal and approved:

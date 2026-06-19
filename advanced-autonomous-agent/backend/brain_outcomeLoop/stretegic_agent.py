@@ -125,6 +125,12 @@ class stretegic_agent:
                         "actions": actions
                     }
 
+                    logger.warning("Stretegic Agent reasoning summary",
+                        user_id=user_id, 
+                        run_id=run_id, 
+                        summary=summary
+                    )
+
                     safe_snapshot = json.loads(
                         json.dumps(
                             decision_context,
@@ -151,11 +157,11 @@ class stretegic_agent:
 
                     llm_span.set_attribute("decision.intent", result.get("intent"))
                     llm_span.set_attribute("decision.confidence", result.get("confidence"))
-                    llm_span.set_attribute("decision.observe", result.get("observe"))
-                    llm_span.set_attribute("decision.plan", result.get("plan"))
-                    llm_span.set_attribute("decision.act", result.get("act"))
-                    llm_span.set_attribute("decision.actions", result.get("actions"))
-                    llm_span.set_attribute("decision.reason", result.get("reason"))
+                    llm_span.set_attribute("decision.observe", json.dumps(result.get("observe", {}), default=str))
+                    llm_span.set_attribute("decision.plan", json.dumps(result.get("plan", {}), default=str))
+                    llm_span.set_attribute("decision.act", json.dumps(result.get("act", {}), default=str))
+                    llm_span.set_attribute("decision.actions", json.dumps("actions", default=str))
+                    llm_span.set_attribute("decision.reason", json.dumps(result.get("reason", {}), default=str))
                 
                 return result
                     
@@ -202,8 +208,28 @@ class stretegic_agent:
     USER INTELLIGENCE CONTEXT:
     {json.dumps(decision_context, default=str)}
 
-    OUTCOME METRICS:
+    SECONDAY PERFORMANCE SIGNALS.
     {json.dumps(metrics, default=str)}
+
+    Use them only as performance evidence.
+    Do not base the whole strategy on metrics when user intelligence has stronger signals.
+    Primary reasoning source is:
+    1. latest resume_history
+    2. saved/clicked jobs
+    3. report_history
+    4. user behavior trend
+    5. previous decisions
+    6. then outcome metrics
+
+    Hard output rules:
+    - Every diagnosis must mention at least one concrete job title/company from recent_saved_or_clicked_jobs.
+    - Every plan must mention the latest resume direction and whether the clicked jobs align with it.
+
+    Sub-agent routing rules:
+    - SourceAgent handles keyword generation, source strategy, and targeting changes.
+    - FollowupAgent handles no-response follow-up reminders/emails only.
+    - Never assign keyword generation to FollowupAgent.
+    - Never assign follow-up emails to SourceAgent.
 
     DECISION PRINCIPLES:
     - Do not overreact when data is small.
