@@ -170,7 +170,7 @@ class MemoryRAGSystem:
         )
 
         if self.postgres_db:
-            await self.postgres_db.save_resume_history({
+            resume_history = await self.postgres_db.save_resume_history({
                 "user_id": user_id,
                 "run_id": base_metadata.get("run_id"),
                 "resume_version": base_metadata.get("resume_version", "v1"), 
@@ -179,7 +179,8 @@ class MemoryRAGSystem:
                 "experience_years": base_metadata.get("experience_years"),
                 "source": "resume_upload"
             })
-
+        
+        logger.warning(f"Saved resume history: {resume_history}")
         logger.info(f" Stored resume {resume_id} for user {user_id}")
         return resume_id
 

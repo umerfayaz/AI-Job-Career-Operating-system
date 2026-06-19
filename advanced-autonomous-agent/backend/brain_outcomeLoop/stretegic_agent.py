@@ -113,6 +113,18 @@ class stretegic_agent:
 
                     logger.warning("Stretegic Agent Decision", result=result)
 
+                    # Saving result summary for the history from agent
+                    summary = {
+                        "intent": result.get("intent"),
+                        "observe": result.get("observe"),
+                        "diagnosis": result.get("diagnosis"),
+                        "plan": result.get("plan"),
+                        "act": result.get("act"),
+                        "verify": result.get("verify"),
+                        "memory_update": result.get("memory_update"),
+                        "actions": actions
+                    }
+
                     safe_snapshot = json.loads(
                         json.dumps(
                             decision_context,
@@ -120,7 +132,7 @@ class stretegic_agent:
                         )
                     )
 
-                    await self.user_intelligence.decision_workflow.create_agent_decision({
+                    stretegic_agent_decision = await self.user_intelligence.decision_workflow.create_agent_decision({
                         "user_id":  user_id,
                         "run_id": run_id,
                         "agent_name": "StretegicAgent",
@@ -131,15 +143,19 @@ class stretegic_agent:
                         "trigger_agent": "AutonomyLoop" if actions.get("trigger_workflow") else "",
                         "status": "planned",
                         "confidence": result.get("confidence", 0.0),
-                        "result_summary": result.get("result_summary")
+                        "result_summary": json.dumps(summary, default=str)
                     })
+
+                    logger.warning(f"Stretegic Agent decision recorded: {stretegic_agent_decision}")
 
 
                     llm_span.set_attribute("decision.intent", result.get("intent"))
                     llm_span.set_attribute("decision.confidence", result.get("confidence"))
-                    llm_span.set_attribute("decision.apply_volume", actions.get("apply_volume"))
-                    llm_span.set_attribute("decision.follow_up_stretegy", actions.get("follow_up_stretegy", ""))
-                    llm_span.set_attribute("decision.trigger_workflow", actions.get("trigger_workflow"))
+                    llm_span.set_attribute("decision.observe", result.get("observe"))
+                    llm_span.set_attribute("decision.plan", result.get("plan"))
+                    llm_span.set_attribute("decision.act", result.get("act"))
+                    llm_span.set_attribute("decision.actions", result.get("actions"))
+                    llm_span.set_attribute("decision.reason", result.get("reason"))
                 
                 return result
                     
@@ -159,38 +175,118 @@ class stretegic_agent:
     
     def _build_prompt(self, metrics: dict, decision_context: dict) -> str:
         return f"""
-    You are an autonomous career optimization strategic agent.
+    You are a senior autonomous career strategy agent.
 
-    Use BOTH:
-    1. Outcome metrics
-    2. Full user intelligence context
+    You act like a CEO-level planner for a user's job-search system.
 
-    User Intelligence Context:
+    Your responsibility is to:
+    1. Observe the user's current state.
+    2. Diagnose what is happening.
+    3. Create a strategic plan.
+    4. Decide safe actions.
+    5. Define what should be observed next.
+    6. Record what should be remembered.
+
+    You are NOT a metrics-only rules engine.
+    You must reason from the full user intelligence context.
+
+    INPUTS YOU MUST USE:
+    - User profile and name
+    - Latest resume history
+    - Saved/clicked jobs
+    - Job report history
+    - Email delivery history
+    - Previous strategic decisions
+    - Outcome metrics
+
+    USER INTELLIGENCE CONTEXT:
     {json.dumps(decision_context, default=str)}
 
-    Observed outcome metrics:
-    - Reply rate: {metrics.get('reply_rate', 0)}
-    - Rejection rate: {metrics.get('rejection_rate', 0)}
-    - No response rate: {metrics.get('no_response_rate', 0)}
-    - Dead application rate: {metrics.get('dead_application_rate', 0)}
-    - Total applications evaluated: {metrics.get('total', 0)}
+    OUTCOME METRICS:
+    {json.dumps(metrics, default=str)}
 
-    Task:
-    Optimize FUTURE job application strategy.
+    DECISION PRINCIPLES:
+    - Do not overreact when data is small.
+    - Do not repeat the same recent strategy without new evidence.
+    - Prefer safe actions first.
+    - Never modify past applications.
+    - Treat saved/clicked jobs as strong user behavior signals.
+    - Treat resume_history as the user's positioning.
+    - Treat report_history as market/opportunity signal.
+    - Treat email_history as delivery/execution signal.
+    - Treat outcome metrics as performance signal.
+    - If resume direction and clicked jobs conflict, identify the mismatch.
+    - If reports recommend one direction but user clicks another, identify the behavior gap.
+    - If email reports are sent but no jobs are clicked, identify engagement problem.
+    - If jobs are clicked but no applications/outcomes exist, collect more data before aggressive action.
 
-    Rules:
-    - Do not modify past applications.
-    - Do not repeat recent failed decisions.
-    - Use recent_agent_decisions to avoid duplicate actions.
-    - Treat rejection as resume/fit problem.
-    - Treat no_response as targeting/visibility problem.
-    - Trigger workflow only when necessary.
+    AVAILABLE SAFE ACTIONS:
+    - update targeting strategy
+    - generate better search keywords
+    - recommend follow-up timing
+    - adjust application volume
+    - recommend role-specific resume direction
+    - shift or keep job source strategy
+    - wait for more outcome data
 
-    Return JSON ONLY:
+    OUTPUT JSON ONLY.
+
+    Return exactly this schema:
+
     {{
-    "intent": "optimize_strategy",
+    "intent": "strategic_plan|no_change|needs_more_data",
     "confidence": 0.0,
-    "reason": "string",
+
+    "observe": {{
+        "user": "string",
+        "latest_resume_direction": "string",
+        "recent_saved_or_clicked_jobs": ["string"],
+        "report_history_signal": "string",
+        "email_history_signal": "string",
+        "outcome_signal": "string"
+    }},
+
+    "diagnosis": {{
+        "career_direction": "string",
+        "current_behavior": "string",
+        "alignment": "strong_match|partial_match|mismatch|insufficient_data",
+        "main_problem": "string",
+        "evidence": ["string"]
+    }},
+
+    "plan": {{
+        "strategic_goal": "string",
+        "next_best_action": "string",
+        "why_this_action": "string",
+        "expected_impact": "string",
+        "risk_if_wrong": "string"
+    }},
+
+    "act": {{
+        "should_execute": true,
+        "execution_level": "observe_only|plan_only|safe_execute",
+        "recommended_sub_agents": [
+        {{
+            "agent": "SourceAgent|FollowupAgent|None",
+            "task": "string",
+            "priority": "low|medium|high",
+            "input": {{}}
+        }}
+        ]
+    }},
+
+    "verify": {{
+        "signals_to_watch_next": ["string"],
+        "success_criteria": ["string"],
+        "when_to_review_again": "string"
+    }},
+
+    "memory_update": {{
+        "decision_summary": "string",
+        "what_changed": "string",
+        "what_to_avoid_repeating": "string"
+    }},
+
     "actions": {{
         "apply_volume": "low|normal|high",
         "follow_up_strategy": "none|reminder",
@@ -199,6 +295,8 @@ class stretegic_agent:
         "application_timing": "anytime|early_only",
         "resume_strategy": "keep|improve|role_specific",
         "trigger_workflow": true
-    }}
+    }},
+
+    "reason": "short final reason"
     }}
     """

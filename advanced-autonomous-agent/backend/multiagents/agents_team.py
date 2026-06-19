@@ -1214,7 +1214,9 @@ class ReportGeneratorAgent(BaseAutonomousAgent):
 
                 }
 
-                await self.agent_app.multi_agent_orchestrator.outcome_database.save_report_history(report_history_payload)
+                report_history = await self.agent_app.multi_agent_orchestrator.outcome_database.save_report_history(report_history_payload)
+                
+                logger.warning(f"Report history Saved: {report_history}")
                 
                 # Verify URLs made it into the report
                 url_count_in_report = report_content.count('](http')
@@ -1807,7 +1809,7 @@ class NotificationAgent(BaseAutonomousAgent):
                 )
                 
                 if sent:
-                    await self.agent_app.multi_agent_orchestrator.outcome_database.save_email_history({
+                    email_history = await self.agent_app.multi_agent_orchestrator.outcome_database.save_email_history({
                         "user_id": user_id,
                         "run_id": run_id,
                         "email_type": "job_report",
@@ -1820,12 +1822,13 @@ class NotificationAgent(BaseAutonomousAgent):
                         },
                     })
 
+                    logger.warning(f"Email Hisotory recorded: {email_history}")
                     logger.info(f" Email sent successfully to {user_email}")
                     del self.pending_reports[user_id]
                     sent_count += 1
 
                 else:
-                    await self.agent_app.multi_agent_orchestrator.outcome_database.save_email_history({
+                    failed_email_history = await self.agent_app.multi_agent_orchestrator.outcome_database.save_email_history({
                         "user_id": user_id,
                         "run_id": run_id,
                         "email_type": "job_report",
@@ -1839,6 +1842,7 @@ class NotificationAgent(BaseAutonomousAgent):
                         },
                     })
 
+                    logger.warning(f"Email Hisotry Failed to save: {failed_email_history}")
                     logger.error(f" Failed to send email to {user_email}")
                     failed_count += 1
 
