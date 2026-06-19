@@ -6,6 +6,7 @@ import structlog
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
 from backend.config.settings import Settings
+from backend.LLMGateway import Models
 
 
 
@@ -17,6 +18,7 @@ class stretegic_agent:
         self.user_intelligence = user_intelligence
         self.shared_context = shared_context
         self.client = AsyncGroq(api_key=self.settings.GROQ_API_KEY)
+        self.models = Models(self.client)
 
 
     async def decision_context(self, user_id: str):
@@ -69,29 +71,29 @@ class stretegic_agent:
             try:
                 with tracer.start_as_current_span("LLM.call") as llm_span:
                     start_llm = time.time()
-                    MODEL_NAME = "llama-3.3-70b-versatile"
-                    llm_span.set_attribute("llm.model", MODEL_NAME)
 
-                    response =  await self.client.chat.completions.create(
-                        model = "llama-3.3-70b-versatile",
-                        temperature = 0.2,
-                        response_format = {"type": "json_object"},
-                        messages = [
-                            {
-                                "role": "system",
-                                "content": "You are a careful stretegic agent. Output json only"
-                            },
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
+                    llm_result =  await self.models.json_completion(
+                        task_type="stretegic_reasoning",
+                        messages=[
+                            {"role": "system", "content": "You are a careful stretegic agent output JSON only" },
+                            {"role": "user", "content": prompt}
                         ]
                     )
+
+                    if not llm_result.get("ok"):
+                        return {
+                            "intent": "needs_more_data",
+                            "confidence": 0.0,
+                            "reason": f" LLM Gateway failed: {llm_result.get('error')}",
+                            "actions": {"trigger workflow": False}
+                        }
 
                     llm_span.set_attribute("llm.latency_seconds", time.time() - start_llm)
                     
                     # LLM Token & Cost Tracking
-                    usage = getattr(response, "usage", None)
+                    usage = llm_result.get("usage")
+                    MODEL_NAME = llm_result.get("model", "unknown")
+                    llm_span.set_attribute("llm.model", MODEL_NAME)
 
                     if usage:
                         llm_span.set_attribute("llm.prompt", prompt[:500])
@@ -108,7 +110,7 @@ class stretegic_agent:
 
                         llm_span.set_attribute("llm.estimated_cost_usd", cost)
                     
-                    content =  response.choices[0].message.content
+                    content =  llm_result["content"]
                     result=json.loads(content)
                     actions = result.get("actions", {})
 
@@ -209,7 +211,7 @@ class stretegic_agent:
     USER INTELLIGENCE CONTEXT:
     {json.dumps(decision_context, default=str)}
 
-    SECONDAY PERFORMANCE SIGNALS.
+    SECONDRY PERFORMANCE SIGNALS.
     {json.dumps(metrics, default=str)}
 
     Use them only as performance evidence.
