@@ -1,11 +1,11 @@
 import os
 import json
-import re
 import time
 from datetime import datetime
 from groq import AsyncGroq
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
+from backend.LLMGateway.fallbackmodels import Models
 from opentelemetry.trace import Status, StatusCode
 from backend.core.skills_extractor import SkillsExtractor
 import structlog
@@ -20,7 +20,7 @@ class SourceAgent:
         self.shared_context = shared_context
         self.skills_extractor = SkillsExtractor()
         self.llm_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = "openai/gpt-oss-120b"
+        self.models = Models(self.llm_client)
 
     async def run(self, user_id, run_id):
 
@@ -34,15 +34,20 @@ class SourceAgent:
                 parent_span.set_attribute("agent", "source")
                 parent_span.set_attribute("user_id", user_id)
 
+                plan = await self.shared_context.read(f"stretegic_agent_plan_{run_id}")
+                if not plan:
+                    logger.warning(f"No stretegic agent plan found for source agent:{run_id}")
+                    return
+                
+                logger.warning(f"Stretegic Plan that Source agent recieved:{plan}")
+                
+                tasks = plan.get("act", {}).get("recommended_sub_agents", [])
+                source_tasks = [t for t in tasks if t.get("agent") == "SourceAgent"]
 
-                stretegy = await self.shared_context.read(f"apply_source_stretegy_{run_id}")
-                logger.warning(f"Recieved stretegy in Source agent : {stretegy}")
-
-                if not stretegy:
-                    logger.warning(f"No Stretegy found in source agent {run_id}")
+                if not source_tasks:
+                    logger.warning(f"No Source task Assigned to Source agent: {run_id}")
                     return
 
-                mode = stretegy.get("mode")
 
                 from backend.brain_outcomeLoop.profile_resolver import (
                     get_active_search_profile,
@@ -77,61 +82,58 @@ class SourceAgent:
                 base_locations = initial_state.get("job_location", "remote")
                 initial_state["job_location"] = base_locations
 
-                if mode == "same":
-                    return 
-                
-                # Shift From stretegic Agent to generate Keywords
-                elif mode == "shift":
-                    with tracer.start_as_current_span("GenerateKeywords") as keyword_span:
-                        keyword_start = time.time()
-                        new_keywords = await self.generate_keywords_with_llm(
-                            base_roles,
-                            base_locations
-                        )
+            
+                with tracer.start_as_current_span("GenerateKeywords") as keyword_span:
+                    keyword_start = time.time()
+                    new_keywords = await self.generate_keywords_with_llm(
+                        base_roles,
+                        base_locations,
+                        source_tasks,
+                        stretegic_plan=plan
+                    )
 
-                        logger.warning(f"New keywords Generated in Source Agent", keywords=new_keywords)
+                    logger.warning(f"New keywords Generated in Source Agent", keywords=new_keywords)
 
-                        if not new_keywords:
-                            new_keywords = base_roles
-                            logger.warning("No new Keywords using the existing initial state keywords")
-                        
-                        keyword_span.set_attribute("keywords.count", len(new_keywords))
-                        keyword_span.set_attribute("keyword.latency_seconds", time.time() - keyword_start)
+                    if not new_keywords:
+                        new_keywords = base_roles
+                        logger.warning("No new Keywords using the existing initial state keywords")
+                    
+                    keyword_span.set_attribute("keywords.count", len(new_keywords))
+                    keyword_span.set_attribute("keyword.latency_seconds", time.time() - keyword_start)
 
-                        config = {
-                            "run_id": run_id,
-                            "keywords": new_keywords,
-                            "location": base_locations,
-                            "fresh_only": True,
-                            "source": "agent",
-                            "preferred_source": "Remotive",
-                            "mode": "autonomous",
-                            "created_at": datetime.now().isoformat()
-                        }
+                    config = {
+                        "run_id": run_id,
+                        "keywords": new_keywords,
+                        "location": base_locations,
+                        "fresh_only": True,
+                        "source": "agent",
+                        "preferred_source": "Remotive",
+                        "mode": "autonomous",
+                        "created_at": datetime.now().isoformat()
+                    }
 
-                        await self.shared_context.write(
-                            f"job_source_config_{run_id}",
-                            config,
-                            "SourceAgent"
-                        )
-                        await self.shared_context.write(
-                            f"current_run_id_{user_id}",
-                            run_id,
-                            "SourceAgent",
-                        )
+                    await self.shared_context.write(
+                        f"job_source_config_{run_id}",
+                        config,
+                        "SourceAgent"
+                    )
+                    await self.shared_context.write(
+                        f"current_run_id_{user_id}",
+                        run_id,
+                        "SourceAgent",
+                    )
 
-                        logger.error(f"""
-                        SOURCE AGENT WRITING CONFIG
-                        RUN_ID: {run_id}
-                        KEY: job_source_config_{run_id}
-                        CONFIG: {config}
-                        """)
+                    logger.error(f"""
+                    SOURCE AGENT WRITING CONFIG
+                    RUN_ID: {run_id}
+                    KEY: job_source_config_{run_id}
+                    CONFIG: {config}
+                    """)
 
-                        logger.info(f"SourceAgent Updated config for",
-                        user_id=user_id,
-                        keywords_count= len(new_keywords),
-                        mode=mode
-                        )
+                    logger.info(f"SourceAgent Updated config for",
+                    user_id=user_id,
+                    keywords_count= len(new_keywords),
+                    )
                 
             
         except Exception as e:
@@ -144,41 +146,85 @@ class SourceAgent:
             
 
    
-    async def generate_keywords_with_llm(self, roles, location):
+    async def generate_keywords_with_llm(self, roles, location, source_tasks, stretegic_plan):
             with tracer.start_as_current_span("LLM.keywords_generation") as gen_span:
                 agent_start = time.time()
-                    
+
                 prompt = f"""
-            You are a job search optimization AI.
+                You are SourceAgent, a specialized job sourcing execution agent.
 
-            User target roles: {roles}
-            Preferred location: {location}
+                Identity:
+                - You do NOT decide the user's career strategy.
+                - The StrategicAgent has already made the strategic decision.
+                - Your job is to convert the StrategicAgent plan into high-quality job search keywords.
+                - You optimize sourcing, targeting, and search coverage.
+                - You must preserve the user's strongest positioning while improving job-market alignment.
 
-            STRICT RULES:
-            - Output ONLY valid JSON
-            - No explanations
-            - No text before or after
-            - No markdown
-            - No numbering
-            - No duplicates
+                StrategicAgent assigned task:
+                {json.dumps(source_tasks, default=str)}
 
-            OUTPUT FORMAT:
-            [
-                "keyword 1",
-                "keyword 2",
-                "keyword 3"
-            ]
-            """
+                Strategic diagnosis:
+                {json.dumps(stretegic_plan.get("diagnosis", {}), default=str)}
+
+                Strategic plan:
+                {json.dumps(stretegic_plan.get("plan", {}), default=str)}
+
+                Strategic action policy:
+                {json.dumps(stretegic_plan.get("actions", {}), default=str)}
+
+                User/context signals:
+                {json.dumps(stretegic_plan.get("observe", {}), default=str)}
+
+                Current base roles/keywords:
+                {json.dumps(roles, default=str)}
+
+                Preferred location:
+                {location}
+
+                Your reasoning task:
+                1. Understand the StrategicAgent's goal.
+                2. Identify the user's actual direction from resume + clicked jobs.
+                3. Preserve strong skills such as Agentic AI, LangGraph, RAG, LLM, Python, FastAPI.
+                4. Generate keywords that improve targeting.
+                5. Avoid generic or low-value keywords.
+                6. Avoid frontend-only, web-only, or unrelated roles unless the StrategicAgent explicitly asks.
+                7. Prefer hybrid keywords that combine AI + backend + Python infrastructure.
+
+                Return JSON ONLY.
+
+                Schema:
+                {{
+                "source_reasoning": "short explanation of how you interpreted the StrategicAgent plan",
+                "target_direction": "string",
+                "keywords": [
+                    "keyword 1",
+                    "keyword 2",
+                    "keyword 3"
+                ],
+                "avoid_keywords": [
+                    "keyword/category to avoid"
+                ],
+                "confidence": 0.0
+                }}
+
+                Rules:
+                - No markdown.
+                - No explanations outside JSON.
+                - No duplicate keywords.
+                - Keywords must be job-search friendly.
+                - Keywords should be specific enough for job boards.
+                - Keep 8 to 15 keywords
+                """
                 try:
                     with tracer.start_as_current_span("LLM.call") as llm_span:
                         start_llm = time.time()
                         MODEL_NAME =  "openai/gpt-oss-120b"
                         llm_span.set_attribute("llm.model", MODEL_NAME)
 
-                        response = await self.llm_client.chat.completions.create(
-                            model=self.model,
+                        response = await self.models.json_completion(
+                            task_type="cheap_json",
                             messages=[
-                                {"role": "system", "content": "You ONLY output valid JSON arrays."},
+                                {"role": "system", "content": "You are SourceAgent. Output valid JSON object only"},
                                 {"role": "user", "content": prompt}
                             ],
                             temperature=0.3
@@ -206,25 +252,19 @@ class SourceAgent:
                     content = response.choices[0].message.content.strip()
 
                 
-                    try:
-                        parsed = json.loads(content)
-                        if isinstance(parsed, list):
-                            return parsed
-                    except:
-                        pass
+                    parsed = json.loads(content)
 
-                    # Fallback: extract JSON array
-                    match = re.search(r"\[.*?\]", content, re.DOTALL)
-                    if match:
-                        try:
-                            parsed = json.loads(match.group())
-                            if isinstance(parsed, list):
-                                return parsed
-                        except Exception as e:
-                            logger.warning("JSON parsing failed", error=str(e))
-
-                    logger.warning("No valid JSON found in LLM response", content=content)
-                    return roles
+                    if isinstance(parsed, dict):
+                        keywords = parsed.get("keywords", [])
+                        if isinstance(keywords, list) and keywords:
+                            logger.warning(
+                                "SourceAgent reasoning completed",
+                                reasoning=parsed.get("source_reasoning"),
+                                target_direction=parsed.get("target_direction"),
+                                confidence=parsed.get("confidence"),
+                                keywords=keywords,
+                            )
+                            return keywords
                 
                 except Exception as e:
                     if "llm_span" in locals():

@@ -356,45 +356,6 @@ class AutonomousOrchestrator:
 
                 users =  await self.shared_context.get_active_users()
                 for user_id in users:
-
-                    self.last_refetch_time.setdefault(user_id, None)
-                    external_policy = await self.shared_context.pop(f"policy_proposal_{user_id}")
-                    logger.info(f"Policy Recevied {external_policy}")
-
-                    if external_policy and external_policy.get("actions", {}).get("trigger_workflow") is True:
-                        logger.info(f"External Policy trigger_workflow {external_policy.get('actions', {})}")
-
-                        await self.cognitive_brain.merge_external_policy(external_policy["actions"])
-                    
-                        should_refetch = await self.outcome_loop.should_refetch(external_policy["actions"])
-                        if should_refetch:
-                            last_time = self.last_refetch_time.get(user_id)
-                            if last_time:
-                                delta_time = (now - last_time).total_seconds()
-
-                                cooldown_seconds = self.last_refetch_hours * 3600
-
-                                if delta_time < cooldown_seconds:
-                                    logger.info(f"Brain3 cooldown active for user {user_id}")
-                                    continue
-                        
-                        await self.shared_context.write(
-                            f"policy_approved_{user_id}",
-                            {
-                                "approved": True,
-                                "actions": external_policy["actions"],
-                                "source": "brain3",
-                                "timestamp": datetime.now().isoformat()
-                            },
-                            "brain3"
-                        )
-
-                        logger.warning(f"Policy approved for:{user_id} in brain3")
-                        self.last_refetch_time[user_id] = now
-                    else:
-                        logger.info("Policy Proposal ignored due to low confidence")
-
-
                     resume_upload=await self.shared_context.read(f"new_resume_upload_{user_id}")
                     if not isinstance(resume_upload, dict):
                         continue

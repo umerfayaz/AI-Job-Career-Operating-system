@@ -130,6 +130,7 @@ class stretegic_agent:
                         "actions": actions
                     }
 
+                    # Import shared memory for subagents to read from stretegic agent
                     await self.shared_context.write(
                         key=f"stretegic_agent_plan_{run_id}",
                         value=result,
