@@ -6,7 +6,7 @@ import structlog
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
 from backend.config.settings import Settings
-from backend.LLMGateway import Models
+from backend.LLMGateway.fallbackmodels import Models
 
 
 
@@ -85,7 +85,7 @@ class stretegic_agent:
                             "intent": "needs_more_data",
                             "confidence": 0.0,
                             "reason": f" LLM Gateway failed: {llm_result.get('error')}",
-                            "actions": {"trigger workflow": False}
+                            "actions": {"trigger_workflow": False}
                         }
 
                     llm_span.set_attribute("llm.latency_seconds", time.time() - start_llm)
@@ -94,6 +94,8 @@ class stretegic_agent:
                     usage = llm_result.get("usage")
                     MODEL_NAME = llm_result.get("model", "unknown")
                     llm_span.set_attribute("llm.model", MODEL_NAME)
+
+                    logger.warning(f"LLM Model called inside stretegic agent:{MODEL_NAME}")
 
                     if usage:
                         llm_span.set_attribute("llm.prompt", prompt[:500])
@@ -128,10 +130,10 @@ class stretegic_agent:
                         "actions": actions
                     }
 
-                    logger.warning("Stretegic Agent reasoning summary",
-                        user_id=user_id, 
-                        run_id=run_id, 
-                        summary=summary
+                    await self.shared_context.write(
+                        key=f"stretegic_agent_plan_{run_id}",
+                        value=result,
+                        agent_name="StretegicAgent"
                     )
 
                     safe_snapshot = json.loads(

@@ -33,6 +33,8 @@ class Models:
                     messages=messages
                 )
 
+                logger.warning(f"LLM Model called in Gateway:{model}")
+
                 return {
                     "ok": True,
                     "model": model,
