@@ -39,7 +39,7 @@ class SourceAgent:
                     logger.warning(f"No stretegic agent plan found for source agent:{run_id}")
                     return
                 
-                logger.warning(f"Stretegic Plan that Source agent recieved:{plan}")
+                logger.warning(f"Stretegic Plan recieved in source agent:{plan}")
                 
                 tasks = plan.get("act", {}).get("recommended_sub_agents", [])
                 source_tasks = [t for t in tasks if t.get("agent") == "SourceAgent"]
@@ -218,10 +218,8 @@ class SourceAgent:
                 try:
                     with tracer.start_as_current_span("LLM.call") as llm_span:
                         start_llm = time.time()
-                        MODEL_NAME =  "openai/gpt-oss-120b"
-                        llm_span.set_attribute("llm.model", MODEL_NAME)
 
-                        response = await self.models.json_completion(
+                        llm_result = await self.models.json_completion(
                             task_type="cheap_json",
                             messages=[
                                 {"role": "system", "content": "You are SourceAgent. Output valid JSON object only"},
@@ -230,9 +228,17 @@ class SourceAgent:
                             temperature=0.3
                         )
 
-                        llm_span.set_attribute("llm.latency_seconds", time.time() - start_llm)
 
-                        usage = getattr(response, "usage", None)
+                        if not llm_result.get("ok"):
+                            logger.warning("SourceAgent LLMGateway failed")
+                            return
+                        
+                        MODEL_NAME = llm_result.get("model", "unknown")
+                        llm_span.set_attribute("llm.model", MODEL_NAME)
+
+                        usage = llm_result.get("usage")
+                        content = llm_result.get("content", "").strip()
+
 
                         if usage:
                             llm_span.set_attribute("llm.prompt", prompt[:500])
@@ -247,24 +253,22 @@ class SourceAgent:
                             cost = (total_tokens / 1000) * MODELS_COST.get( MODEL_NAME, 0)
 
                             llm_span.set_attribute("llm.estimated_cost_usd", cost)
+                            llm_span.set_attribute("llm.latency_seconds", time.time() - start_llm)
                         
-
-                    content = response.choices[0].message.content.strip()
-
                 
-                    parsed = json.loads(content)
+                        parsed = json.loads(content)
 
-                    if isinstance(parsed, dict):
-                        keywords = parsed.get("keywords", [])
-                        if isinstance(keywords, list) and keywords:
-                            logger.warning(
-                                "SourceAgent reasoning completed",
-                                reasoning=parsed.get("source_reasoning"),
-                                target_direction=parsed.get("target_direction"),
-                                confidence=parsed.get("confidence"),
-                                keywords=keywords,
-                            )
-                            return keywords
+                        if isinstance(parsed, dict):
+                            keywords = parsed.get("keywords", [])
+                            if isinstance(keywords, list) and keywords:
+                                logger.warning(
+                                    "SourceAgent reasoning completed",
+                                    reasoning=parsed.get("source_reasoning"),
+                                    target_direction=parsed.get("target_direction"),
+                                    confidence=parsed.get("confidence"),
+                                    keywords=keywords,
+                                )
+                                return keywords
                 
                 except Exception as e:
                     if "llm_span" in locals():
@@ -273,6 +277,5 @@ class SourceAgent:
                         llm_span.set_status(Status(StatusCode.ERROR, str(e)))
                 finally:
                     gen_span.set_attribute("agent.latency_seconds", time.time() - agent_start )
-
-       
+    
     

@@ -106,7 +106,7 @@ class stretegic_agent:
                         # Calculating cost per Token LLM
                         total_tokens = getattr(usage, "total_tokens", 0)
                         MODEL_COSTS = {
-                            "llama-3.3-70b-versatile": 0.0001
+                            MODEL_NAME: 0.0001
                         }
                         cost = (total_tokens / 1000) * MODEL_COSTS.get(MODEL_NAME, 0)
 
