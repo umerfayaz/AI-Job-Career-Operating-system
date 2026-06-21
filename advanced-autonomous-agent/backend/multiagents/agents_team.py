@@ -1575,7 +1575,6 @@ class NotificationAgent(BaseAutonomousAgent):
             
             job = job_result
 
-            subject = f"Follow up {job.get('job_title') or job.get('title')}"
 
             last_followup = job.get("last_followup_at")
             if last_followup:
@@ -1584,8 +1583,20 @@ class NotificationAgent(BaseAutonomousAgent):
                     logger.info(f"skipping followup (cooldown active) for job {job_id}")
                     return
             
-            email_content = await self.generate_email(job)
+            # Followup Email Catch from followup agent
+            subject =  payload.get("email_subject") or f"Follow up {job.get('job_title') or job.get('title')}"
+            email_content = payload.get("email_content")
+            email_body = payload.get("email_body")
+            followup_angle = payload.get("followup_angle")
+            reason = payload.get("reason")
 
+            email_content =await self.generate_email(
+                job=job,
+                email_body=email_body,
+                followup_angle=followup_angle,
+                reason=reason
+            )
+            
             await asyncio.to_thread(
                     self.email_sender.send_report,
                     subject,
@@ -1607,63 +1618,63 @@ class NotificationAgent(BaseAutonomousAgent):
         except Exception as e:
             logger.info(f"Error in job reminder function {e}")
     
-    async def generate_email(self, job):
-        followup_message = f"""
-    Hi {job.get("company", "Hiring Team")},
-
-    I hope this message finds you well.
-
-    I wanted to follow up regarding my application for the **{job.get("job_title", "position")}** role. I remain very interested in this opportunity and would appreciate any updates you may be able to share about the current status of my application.
-
-    Please let me know if there is any additional information I can provide.
-
-    Thank you for your time and consideration.
-
-    Kind regards,  
-    {job.get("candidate_name", "Candidate")}
-    """
+    async def generate_email(self, job, email_body, followup_angle, reason):
 
         return f"""
     <html>
     <body>
 
-    <h2>📩 Follow-up Suggested by Your AI Career Assistant</h2>
+    <h2>📩 AI Follow-up Recommendation</h2>
 
-    <p>Hi,</p>
+    <p>Your autonomous career assistant analyzed your application history and recommends a follow-up.</p>
 
-    <p>Your application for the following role has not received a response yet:</p>
+    <hr>
+
+    <h3>Application</h3>
 
     <ul>
     <li><strong>Role:</strong> {job.get("job_title") or job.get("title")}</li>
     <li><strong>Company:</strong> {job.get("company")}</li>
+    <li><strong>Status:</strong> No response received</li>
     </ul>
 
-    <p>Based on this, your AI system recommends sending a follow-up email to increase your chances of getting a response.</p>
+    <hr>
+
+    <h3>AI Reasoning</h3>
+
+    <p><strong>Reason:</strong></p>
+    <p>{reason}</p>
+
+    <p><strong>Communication Strategy:</strong></p>
+    <p>{followup_angle}</p>
 
     <hr>
 
-    <h3>✉️ Suggested Follow-up Message:</h3>
+    <h3>Suggested Follow-up Email</h3>
 
-    <pre>{followup_message}</pre>
+    <pre>{email_body}</pre>
 
     <hr>
 
-    <p><strong>What you can do next:</strong></p>
+    <h3>Next Steps</h3>
+
     <ul>
-    <li>Review and personalize the message if needed</li>
-    <li>Send it to the recruiter or hiring manager</li>
+    <li>Review the suggested message.</li>
+    <li>Personalize it if needed.</li>
+    <li>Send it to the recruiter or hiring manager.</li>
+    <li>Your AI system will continue monitoring future outcomes.</li>
     </ul>
-
-    <p>Your AI assistant will continue monitoring your application and notify you of any updates.</p>
 
     <br>
 
-    <p>Best regards,<br>
-    Your AI Career Assistant</p>
+    <p>
+    Best regards,<br>
+    Your Autonomous Career AI
+    </p>
 
     </body>
     </html>
-"""
+    """
 
     async def receive_job_report(self, user_id: str, report_data: Dict):
         """Receive a report from ReportGeneratorAgent"""

@@ -39,7 +39,7 @@ class FollowupAgent:
                     return
 
 
-                task = plan.get("act", {}).get("recommneded_sub_agents", [])
+                task = plan.get("act", {}).get("recommended_sub_agents", [])
                 followup_tasks = [ t for t in task if t.get("agent") == "FollowupAgent"]
                 if not followup_tasks:
                     logger.warning("No followup tasks for followup agent")
@@ -50,7 +50,7 @@ class FollowupAgent:
                 
                 eligible_jobs = [
                     job for job in jobs
-                    if job.get("status") == "no_reponse"
+                    if job.get("status") == "no_response"
                     and job.get("followup_count", 0) < 1 
                 ]
 
@@ -61,13 +61,13 @@ class FollowupAgent:
                 )
 
                 if not followup_decision.get("should_follow_up"):
-                    logger.watning(f" FollowupAgent decided not to followup", reason=followup_decision.get("reason"))
+                    logger.warning(f" FollowupAgent decided not to followup", reason=followup_decision.get("reason"))
                     return
 
                 with tracer.start_as_current_span("EmitFollowup") as event_span:
                     event_time = time.time()
 
-                    for item in followup_decision.get("seleted_jobs", []):
+                    for item in followup_decision.get("selected_jobs", []):
                         await self.event_bus.emit({
                             "type": "FOLLOWUP_JOB_REQUEST",
                             "payload": {
@@ -210,7 +210,7 @@ class FollowupAgent:
                     )
 
                     return {
-                        "should_followup": False,
+                        "should_follow_up": False,
                         "reason": "LLM Gateway Failed",
                         "selected_jobs": [],
                         "skipped_jobs": [],
@@ -226,15 +226,15 @@ class FollowupAgent:
                 if not isinstance(parsed, dict):
                     raise ValueError("Followup agent LLM response was not a JSON object")
                 
-                selected_jobs = parsed.get("selected_jobs", [])
+                selected_jobs = parsed.get("selected_jobs", list)
                 if not isinstance(selected_jobs, []):
                     parsed["selected_jobs"] = []
                 
                 logger.warning(
                     "FollowupAgent reasoning completed",
-                    should_followup=parsed.get("should_followup"),
+                    should_follow_up=parsed.get("should_follow_up"),
                     selected_jobs=parsed.get("selected_jobs", []),
-                    confidence=parsed.get("confidene", 0.0),
+                    confidence=parsed.get("confidence", 0.0),
                     reason=parsed.get("reason")
                 )
 
@@ -263,7 +263,7 @@ class FollowupAgent:
                 llm_span.set_status(Status(StatusCode.ERROR, str(e)))
 
                 return {
-                    "should_followup": False,
+                    "should_follow_up": False,
                     "reason": f"Reasoning Failed:{str(e)}",
                     "selected_jobs": [],
                     "skipped_jobs": [],
