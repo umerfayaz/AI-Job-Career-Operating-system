@@ -239,6 +239,8 @@ class SourceAgent:
                         usage = llm_result.get("usage")
                         content = llm_result.get("content", "").strip()
 
+                        logger.warning(f"LLM Model called inside SourceAgent:{MODEL_NAME}")
+
 
                         if usage:
                             llm_span.set_attribute("llm.prompt", prompt[:500])
@@ -248,7 +250,7 @@ class SourceAgent:
 
                             total_tokens = getattr(usage, "total_tokens", 0)
                             MODELS_COST =  {
-                                "llama-3.3-70b-versatile": 0.0001
+                                MODEL_NAME: 0.0001
                             }
                             cost = (total_tokens / 1000) * MODELS_COST.get( MODEL_NAME, 0)
 

@@ -698,7 +698,7 @@ class AutonomousOrchestrator:
             ),
             self.safe_runner.create_task(
                 name="brain4_outcome_loop",
-                coro=self.outcome_loop.run_loop(internal_seconds=60),
+                coro=self.outcome_loop.run_loop(internal_seconds=120),
                 severity="critical",
                 issue="brain4_outcome_loop_creash",
                 source="brain4"

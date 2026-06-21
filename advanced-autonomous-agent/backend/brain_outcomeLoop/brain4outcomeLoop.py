@@ -26,13 +26,12 @@ class OutComeLoop:
         self.user_intelligence = user_intelligence
         self.safe_runner = SafeRunner(self.event_bus)
         self.stretegic_agent = stretegic_agent(shared_context=self.shared_context, user_intelligence=self.user_intelligence)
-        self.stretegy_execute = stretegyExecutor(self.shared_context, self.event_bus, self.outcome_database)
         self.follow_up_agent = FollowupAgent(self.shared_context, self.event_bus, self.outcome_database)
         self.source_agent =  SourceAgent(self.shared_context)
         self.refetch_listener = None
         self.is_running = False
 
-        self.no_response_days = 3
+        self.no_response_days = 0
         self.dead_application = 5
         self.reply_threshold = 0.2
         self.no_reply_threshold = 0.5
@@ -45,7 +44,7 @@ class OutComeLoop:
             actions.get("apply_volume") in ("high", "normal")
         )
 
-    async def run_loop(self, internal_seconds=60):
+    async def run_loop(self, internal_seconds=120):
         logger.info("Initializing DB outcome")
 
         self.is_running = True
@@ -96,15 +95,24 @@ class OutComeLoop:
                 break
             
             offset += BATCHSIZE
-            now_time = datetime.now()
+            now_time = datetime.now(UTC)
 
             for job in applied_jobs:
                 applied_at = job.get("applied_at")
                 status = job.get("status")
                 outcome_at = job.get("outcome_at")
 
-                applied_at = parser.parse(applied_at) if isinstance(applied_at, str) else None
-                outcome_at = parser.parse(outcome_at) if isinstance(outcome_at, str) else None
+                if isinstance(applied_at, str):
+                    applied_at = parser.parse(applied_at)
+                
+                if isinstance(outcome_at, str):
+                    outcome_at = parser.parse(outcome_at)
+                
+                if applied_at and applied_at.tzinfo is None:
+                    applied_at = applied_at.replace(tzinfo=UTC)
+
+                if outcome_at and outcome_at.tzinfo is None:
+                    outcome_at = outcome_at.replace(tzinfo=UTC)
 
                 if not applied_at:
                     continue
@@ -116,7 +124,7 @@ class OutComeLoop:
                     and not outcome_at
                 ):
                     job["status"] = "no_response"
-                    job["outcome_at"] = now_time.isoformat()
+                    job["outcome_at"] = now_time
                     await self.outcome_database.update_job(job)
 
                     await self.event_bus.emit({
@@ -127,7 +135,7 @@ class OutComeLoop:
                         "new_status": "no_response",
                         "job_metadata": job,
                         "source": "brain4",
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now(UTC)
                     })
 
                 # dead_application
@@ -136,7 +144,7 @@ class OutComeLoop:
                     and (now_time - applied_at).days >= self.dead_application
                 ):
                     job["status"] = "dead_application"
-                    job["outcome_at"] = datetime.now().isoformat()
+                    job["outcome_at"] = datetime.now()
                     await self.outcome_database.update_job(job)
 
                     await self.event_bus.emit({
@@ -147,7 +155,7 @@ class OutComeLoop:
                         "new_status": "dead_application",
                         "job_metadata": job,
                         "source": "brain4",
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now(UTC)
                     })
 
                 # EMAIL CHECK (THIS MUST BE INSIDE LOOP)
@@ -159,7 +167,7 @@ class OutComeLoop:
 
                 if reply_status != job.get("status"):
                     job["status"] = reply_status
-                    job["outcome_at"] = datetime.now().isoformat()
+                    job["outcome_at"] = datetime.now(UTC)
                     await self.outcome_database.update_job(job)
                     logger.info(f"job {job['job_id']} updated from email reply {reply_status}")
 

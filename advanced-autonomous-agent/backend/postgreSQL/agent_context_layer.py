@@ -153,8 +153,7 @@ class UserIntelligence:
 
         no_response_jobs = [
             j for j in jobs
-            if j.get("status") == "applied"
-            and j.get("followup_count", 0) == 0
+            if j.get("status") == "no_response"
         ]
 
         interview_rate = round((len(interview_jobs) / total_jobs) * 100, 2) if total_jobs else 0
@@ -182,7 +181,7 @@ class UserIntelligence:
             "recent_interviews": interview_jobs[:10],
             "no_response_jobs": no_response_jobs[:10],
             "agent_state": agent_state,
-            "recent_agent_decisions": [],
+            "recent_agent_decisions": recent_decisions,
             "report_history": report_history,
             "email_history": email_history,
             "resume_history": resume_history

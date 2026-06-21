@@ -37,6 +37,8 @@ class FollowupAgent:
                 if not plan:
                     logger.warning("No plan found for followup agennt")
                     return
+                
+                logger.warning(f"Followup Agent recieved plan from stretegic agent: {plan}")
 
 
                 task = plan.get("act", {}).get("recommended_sub_agents", [])
@@ -59,6 +61,8 @@ class FollowupAgent:
                     followup_tasks=followup_tasks,
                     eligible_jobs=eligible_jobs
                 )
+
+                logger.warning(f"Followup Agent decision: {followup_decision}")
 
                 if not followup_decision.get("should_follow_up"):
                     logger.warning(f" FollowupAgent decided not to followup", reason=followup_decision.get("reason"))
@@ -222,6 +226,8 @@ class FollowupAgent:
 
                 usage = llm_result.get("usage")
                 MODEL_NAME = llm_result.get("model", "unknown")
+
+                logger.warning("LLM Model called inside Followup agent: {MODEL_NAME}")
 
                 if not isinstance(parsed, dict):
                     raise ValueError("Followup agent LLM response was not a JSON object")
