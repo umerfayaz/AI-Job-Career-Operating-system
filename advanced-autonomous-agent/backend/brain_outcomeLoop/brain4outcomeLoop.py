@@ -3,13 +3,11 @@ from dateutil import parser
 from typing import Dict
 import structlog
 from backend.core.safeRunner import SafeRunner
-from backend.brain_outcomeLoop.fingerprint_policy import fingerprint_policy
 from backend.brain_outcomeLoop.stretegic_agent import stretegic_agent 
 from backend.AgenticStretegies.apply_source import SourceAgent
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
 from backend.AgenticStretegies.apply_followup import FollowupAgent
-from backend.brain_outcomeLoop.profile_resolver import ensure_active_search_profile
 from backend.core.event_bus import get_event_bus
 from datetime import datetime, UTC
 import time
@@ -175,10 +173,12 @@ class OutComeLoop:
             users = await self.outcome_database.get_active_user_ids()
             for user_id in users:
                 user_jobs = await self.outcome_database.get_jobs_by_user(user_id, limit=1000)
+
                 run_id = await self.shared_context.read(f"current_run_id_{user_id}")
                 if not run_id:
-                    run_id = f"run_brain4_{user_id}_{int(datetime.now().timestamp())}"
-                skip_strategy = False
+                    logger.error(
+                        f"No run_id found inside Outcomeloop for {user_id} Skipping Outcomeloop"
+                    )
 
                 # metrics
                 metrics = self.calculate_metrics(user_jobs)
@@ -216,47 +216,41 @@ class OutComeLoop:
                         logger.info(f"Stretgic agent policies recommending {strategic_decision}")
                         actions = strategic_decision.get("actions", {})
 
-                        new_fingerprint_policy = fingerprint_policy(actions)
+                        # Calling SubAgents
+                        if strategic_decision.get("act", {}).get("should_execute") is True:
+                            await self.source_agent.run(user_id, run_id)
+                            await self.follow_up_agent.run(user_id, run_id)
+                            logger.warning("SubAgents Calling by stretegic Agent")                         
 
-                        last_fingerprint_policy = state["last_fingerprint"] if state else None
+                        # Updating agent state memory
+                        await self.outcome_database.update_agent_state(user_id, {
+                            "last_metrics": metrics,
+                            "last_fingerprint": new_fingerprint_policy,
+                            "last_refetch_at": datetime.now(UTC)
+                        })
 
-                        if new_fingerprint_policy == last_fingerprint_policy:
-                                logger.info("Strategic agent proposed identical policy - skipped")
-                                skip_strategy = True
+                        source_config = await self.shared_context.read(f"job_source_config_{run_id}")
 
-                        if not skip_strategy:
-                            # Calling SubAgents
-                            if strategic_decision.get("act", {}).get("should_execute") is True:
-                                await self.source_agent.run(user_id, run_id)
-                                await self.follow_up_agent.run(user_id, run_id)
-                                logger.warning("SubAgents Calling by stretegic Agent")                         
-
-                            # Updating agent state memory
-                            await self.outcome_database.update_agent_state(user_id, {
-                                "last_metrics": metrics,
-                                "last_fingerprint": new_fingerprint_policy,
-                                "last_refetch_at": datetime.now(UTC)
+                        if actions.get("trigger_workflow") is True and source_config:
+                            await self.event_bus.emit({
+                                "type": "REFETCH_JOBS",
+                                "payload": {
+                                    "user_id": user_id,
+                                    "run_id": run_id,
+                                    "policy_actions": actions,
+                                },
+                                "source": "brain4",
+                                "timestamp": datetime.now().isoformat(),
                             })
-                        
+                            logger.warning(
+                                "Refetch triggered after stretegic execution"
+                            )
+                            
                         span.set_attribute("user_id", user_id)
                         span.set_attribute("metrics.reply_rate", metrics["reply_rate"])
                         span.set_attribute("metrics.rejection_rate", metrics["rejection_rate"])
                         span.set_attribute("stretegic_decision.latency_seconds", time.time() - stretegic_decision_start)
 
-                        
-                        # await self.event_bus.emit({
-                        #     "type": "REFETCH_JOBS",
-                        #     "payload": {
-                        #         "user_id": user_id,
-                        #         "run_id": run_id,
-                        #         "policy_actions": actions,
-                        #     },
-                        #     "source": "brain4",
-                        #     "timestamp": datetime.now().isoformat(),
-                        # })
-                        # logger.warning(
-                        #     "Refetch triggered after policy approval by brain3"
-                        # )
                 
     def calculate_metrics(self, jobs):
 

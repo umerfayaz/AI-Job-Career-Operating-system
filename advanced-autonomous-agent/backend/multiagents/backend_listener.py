@@ -1,5 +1,6 @@
 import structlog
 import time
+import json
 import asyncio
 from datetime import datetime, timedelta
 from backend.observability.tracer import tracer
@@ -60,7 +61,7 @@ class RefetchJobListener:
                                 # Refetch Observavility tracing 
                                 parent_span.set_attribute("refetch.event_type", event.get("type"))
                                 parent_span.set_attribute("refetch.user_id", user_id)
-                                parent_span.set_attribute("refetch.policy_actions", policy_actions)
+                                parent_span.set_attribute("refetch.policy_actions", json.dumps(policy_actions))
 
                                 with tracer.start_as_current_span("refetch.rebuild_job_listener") as rebuild_span:
                                     start_trigger_workflow = time.time()

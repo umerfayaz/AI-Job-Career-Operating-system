@@ -7,6 +7,7 @@ from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
 from backend.LLMGateway.fallbackmodels import Models
 from opentelemetry.trace import Status, StatusCode
+from backend.brain_outcomeLoop.profile_resolver import ensure_active_search_profile
 from backend.core.skills_extractor import SkillsExtractor
 import structlog
 from dotenv import load_dotenv
@@ -48,12 +49,7 @@ class SourceAgent:
                     logger.warning(f"No Source task Assigned to Source agent: {run_id}")
                     return
 
-
-                from backend.brain_outcomeLoop.profile_resolver import (
-                    get_active_search_profile,
-                )
-
-                profile_data = await get_active_search_profile(
+                profile_data = await ensure_active_search_profile(
                     self.shared_context, user_id, run_id
                 )
 
