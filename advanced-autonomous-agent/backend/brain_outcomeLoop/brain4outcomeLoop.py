@@ -29,8 +29,8 @@ class OutComeLoop:
         self.refetch_listener = None
         self.is_running = False
 
-        self.no_response_days = 0
-        self.dead_application = 5
+        self.no_response_days = 3
+        self.dead_application = 0
         self.reply_threshold = 0.2
         self.no_reply_threshold = 0.5
         self._shutdown_event = asyncio.Event()
@@ -225,7 +225,6 @@ class OutComeLoop:
                         # Updating agent state memory
                         await self.outcome_database.update_agent_state(user_id, {
                             "last_metrics": metrics,
-                            "last_fingerprint": new_fingerprint_policy,
                             "last_refetch_at": datetime.now(UTC)
                         })
 

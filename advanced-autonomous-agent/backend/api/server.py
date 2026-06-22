@@ -5,6 +5,7 @@ import asyncio
 import time
 import uvicorn
 import structlog
+from groq import AsyncGroq
 from pathlib import Path
 from fastapi.responses import RedirectResponse
 from backend.observability.tracer import tracer
@@ -20,7 +21,8 @@ from backend.core.email_verification import( verification_codes,
     generate_verification_code,
     verify_email_code
 )
-from backend.LLMClient.lmc_client import LMCClient
+from backend.config.settings import Settings
+from backend.LLMGateway.fallbackmodels import Models
 from fastapi import WebSocket, WebSocketDisconnect, APIRouter
 from typing import Dict, Optional
 from backend.multiagents.guardrails import JobReportGuardrails
@@ -51,9 +53,10 @@ guardrails = JobReportGuardrails()
 emit_stage = EmitStage()
 pdf_generator = PDFGenerator()
 pending_workflows: dict = {}
+settings = Settings()
 workflow_lock = Lock()
 router = APIRouter()
-llm_client = LMCClient()
+models = Models(AsyncGroq(api_key=settings.GROQ_API_KEY))
 
 
 user_registry = None
@@ -397,14 +400,17 @@ async def upload_resume(
                 llm_start = time.time()
                 llm_span.set_attribute("llm.model",  "openai/gpt-oss-120b")
 
-                response = llm_client.client.chat.completions.create(
-                    model =  llm_client.model,
+                response = await models.text_completion(
+                    task_type="cheap_json",
                     messages =[{"role": "user", "content": prompt}]
                 )
 
+                MODEL_NAME = response.get("model", "unknown")
+                logger.warning(f"Model called inside resume upload: {MODEL_NAME}")
+
                 llm_span.set_attribute("llm.latency_seconds", time.time() - llm_start)
 
-                usage = getattr(response, "usage", 0)
+                usage = response.get("usage")
 
                 if usage:
                     llm_span.set_attribute("llm.prompt", prompt[:500])
@@ -414,13 +420,13 @@ async def upload_resume(
 
                     total_tokens = getattr(usage, "total_tokens", 0)
                     MODEL_COSTS = {
-                        "openai/gpt-oss-120b": 0.0001
+                        MODEL_NAME: 0.0001
                     }
-                    cost = (total_tokens / 1000) * MODEL_COSTS.get("openai/gpt-oss-120b")
+                    cost = (total_tokens / 1000) * MODEL_COSTS.get(MODEL_NAME)
 
                     llm_span.set_attribute("llm.total_estimated_cost_usd", cost)
 
-                narration_messages = response.choices[0].message.content
+                narration_messages = response.get("content")
 
                 emitter = AgentEmitter(agent_name="ResumeController", event_bus=event_bus)
 

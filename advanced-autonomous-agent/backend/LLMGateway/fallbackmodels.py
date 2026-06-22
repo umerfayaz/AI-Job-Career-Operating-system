@@ -26,7 +26,7 @@ class Models:
 
         for model in  models:
             try:
-                response = await self.client.chat.completions.create(
+                response = await self.client.json_completion(
                     model=model,
                     temperature=temperature,
                     response_format={"type": "json_object"},
@@ -57,8 +57,38 @@ class Models:
             "usage": None,
             "error": str(last_error)
         }
+    
+    async def text_completion(self, task_type: str, messages: list, temperature: float = 0.2):
+        model_list = self.models_routes.get(task_type, self.models_routes["cheap_json"])
+        last_error = None
 
+        for model in model_list:
+            try:
+                response = await self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature
+                )
 
-            
+                return {
+                    "ok": True,
+                    "model": model,
+                    "content": response.choices[0].message.content,
+                    "usage": getattr(response, "usage", None)
+                }
+
+            except Exception as e:
+                last_error = e
+                logger.warning("LLM model failed trying fallback", model=model, error=str(e))
+
+        return {
+            "ok": False,
+            "model": None,
+            "content": None,
+            "usage": None,
+            "error": str(last_error)
+        }
+
+                
 
 

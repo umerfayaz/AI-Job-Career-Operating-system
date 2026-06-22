@@ -1,6 +1,7 @@
 from groq import Groq
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
+from backend.LLMGateway.fallbackmodels import Models
 from backend.config.settings import Settings
 import structlog
 from typing import Dict
@@ -14,7 +15,7 @@ class LMCClient:
     def __init__(self):
         self.settings = Settings()
         self.client = Groq(api_key=self.settings.GROQ_API_KEY)
-        self.model = "openai/gpt-oss-120b"
+        self.model = Models(self.client)
 
     async def generate_job_report(self, resume_text: str, matches: dict) -> str:
         """Generate a comprehensive professional job report
@@ -223,20 +224,21 @@ class LMCClient:
                     start_llm = time.time()
                     llm_span.set_attribute("llm.model", "openai/gpt-oss-120b")
 
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        temperature=0.4,  
-                        max_tokens=4096,  
+                    response =  await self.models.json_completion(
+                        task_type="stretegic_reasoning",    
                         messages=[
                             {
                                 "role": "system", 
                                 "content": "You are a senior career advisor with 15+ years of experience in technical recruiting and career development. You provide detailed, actionable, and highly personalized job matching reports. ALWAYS convert APPLY_URL: links into proper markdown [Apply Here](url) format. Copy URLs EXACTLY as provided - these are verified working links."
                             },
                             {"role": "user", "content": prompt}
-                        ]
+                        ],
+                        temperature=0.2
                     )
 
-                    llm_span.set_attribute("llm.latency_seconds", time.time() - start_llm)
+                    MODEL_NAME = response.get("model", "unknown")
+
+                    logger.warnint(f"Model called for  Report geneartion: {MODEL_NAME}")
 
                     usage = getattr(response, "usage", 0)
 
@@ -248,10 +250,13 @@ class LMCClient:
                     
                     total_tokens = getattr(usage, "total_tokens", 0)
                     MODEL_COSTS = {
-                        "openai/gpt-oss-120b": 0.0001
+                        MODEL_NAME: 0.0001
                     }
                     cost = (total_tokens / 1000) * MODEL_COSTS.get(self.model)
+
+                    llm_span.set_attribute("llm.model", MODEL_NAME)
                     llm_span.set_attribute("llm.total_estimated_cost_usd", cost)
+                    llm_span.set_attribute("llm.latency_seconds", time.time() - start_llm)
 
                     report = response.choices[0].message.content
                     

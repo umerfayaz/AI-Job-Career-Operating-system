@@ -201,7 +201,6 @@ class PostgresDatabase:
 
                 return {
                     "last_metrics": row.last_metrics,
-                    "last_fingerprint": row.last_fingerprint,
                     "last_refetch_at": row.last_refetch_at,
                     "cooldown_until": row.cooldown_until,
                     "last_run_id": row.last_run_id,
@@ -220,7 +219,6 @@ class PostgresDatabase:
             record_state = {
                 "user_id": user_id,
                 "last_metrics": data.get("last_metrics"),
-                "last_fingerprint": data.get("last_fingerprint"),
                 "last_refetch_at": data.get("last_refetch_at"),
                 "cooldown_until": data.get("cooldown_until"),
                 "last_run_id": data.get("last_run_id"),
@@ -232,7 +230,6 @@ class PostgresDatabase:
                 index_elements=["user_id"],
                 set_={
                     "last_metrics": stmt.excluded.last_metrics,
-                    "last_fingerprint": stmt.excluded.last_fingerprint,
                     "last_refetch_at": stmt.excluded.last_refetch_at,
                     "cooldown_until": stmt.excluded.cooldown_until,
                     "last_run_id": stmt.excluded.last_run_id,
