@@ -9,8 +9,7 @@ Both work independently BUT share data and can trigger each other.
 """
 
 import asyncio
-from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 import structlog
 from threading import Lock
 from langchain_groq import ChatGroq
@@ -22,6 +21,7 @@ from backend.core.event_bus import get_event_bus
 from backend.config.settings import Settings
 from backend.systen_brain.decider import CognitiveBrain
 from backend.core.memory_system import MemoryRAGSystem
+from sentence_transformers import CrossEncoder
 from backend.multiagents.agents_orchestrator import AutonomousOrchestrator
 from backend.redis.redis_memory import redis_client
 
@@ -50,6 +50,8 @@ class AgentApplication:
         self.event_bus = None
         self.recover_manager = None
         self.safe_runner = None
+        self.embedding_model =  None
+        self.reranker_model = None
         self.autonomous_24_7 = autonomous_24_7
         self._autonomous_task = None
         self._autonomous_started = False
@@ -110,7 +112,14 @@ class AgentApplication:
         self.memory_system = MemoryRAGSystem()
         self.memory = self.memory_system
         logger.info("   Memory system initialized")
+
+        self.embedding_model = self.memory.embedding_model
+        logger.warning("Embedding Model Initialized in application startup")
         
+        self.reranker_model = CrossEncoder(
+            "BAAI/bge-reranker-v2-m3"
+        )
+        logger.warning("Reranker Model initialized in application startup")
         # LLM 
         self.llm = ChatGroq(
             model=self.Settings.PRIMARY_MODEL,
@@ -143,7 +152,13 @@ class AgentApplication:
             self.event_bus.subscribers_topic("SYSTEM_ERROR", self.cognitive_brain.autonomous_recovery)
             
             # Initializing nodes and graph
-            nodes = AgentNodes(agent_app=self, llm=self.llm, memory=self.memory_system)
+            nodes = AgentNodes(agent_app=self,
+                llm=self.llm, 
+                memory=self.memory_system, 
+                embedding_model=self.embedding_model,
+                reranker_model=self.reranker_model
+             )
+             
             self.agent_graph = AgentGraph(nodes)
             
             self.graph_initialized = True

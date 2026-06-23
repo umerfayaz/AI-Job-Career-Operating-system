@@ -1,6 +1,5 @@
 from langchain_groq import ChatGroq
 import numpy as np
-from sentence_transformers import CrossEncoder
 import time
 import structlog
 from ..core.skills_extractor import SkillsExtractor
@@ -45,23 +44,20 @@ class AgentNodes:
     All graph nodes implementing ReAct, Reflexion, and ToT patterns.
     """
 
-    def __init__(self, agent_app, llm: ChatGroq, memory: MemoryRAGSystem):
+    def __init__(self, agent_app, llm: ChatGroq, memory: MemoryRAGSystem, embedding_model=None, reranker_model=None):
         self.llm = llm
         self.agent_app = agent_app
         self.emit_stage = EmitStage()
         self.shared_context = SharedContext()
-        self.embedding_model = None
-        self.reranker_model = None
         self.memory_system  = memory
+        self.embedding_model = embedding_model or memory.embedding_model
+        self.reranker_model = reranker_model
         
     def _get_reranker_model(self):
 
         logger.warning("Loading CrossEncoder")
         if self.reranker_model is None:
-            self.reranker_model = CrossEncoder(
-                "BAAI/bge-reranker-v2-m3"
-            )
-        logger.warning("CrossEncoder Loaded")
+            return self.reranker_model
         
         return self.reranker_model
 
@@ -501,12 +497,6 @@ class AgentNodes:
             user_id = state.get("user_id")
             stretegy = {}
 
-            await self.emit_stage.emit_staging_start(
-                run_id=state.get("run_id"),
-                stage="planning",
-                message="Analyzing your experience and skills..."
-            )
-
             system_prompt = """You are an expert job search strategist with deep knowledge of applicant tracking systems (ATS), industry hiring patterns, and job market dynamics.
 
             Given a resume and job preferences, create a comprehensive, targeted job search strategy that maximizes relevant opportunities.
@@ -552,7 +542,15 @@ class AgentNodes:
 
             resume_snippet = state.get('resume_text','')[:3000] if state.get('resume_text') else ''
 
+            # Staging event frontend
+            await self.emit_stage.emit_staging_start(
+                run_id=state.get("run_id"),
+                stage="planning",
+                message="Analyzing your experience and skills..."
+            )
+
             messages = [
+                SystemMessage(system_prompt),
                 HumanMessage(content=f"""
                 Resume:
                 {resume_snippet}
@@ -603,18 +601,7 @@ class AgentNodes:
                 - Output must be parseable by json.loads()
                 """)
             ]
-        
-            await self.emit_stage.emit_staging_done(
-                    run_id=state.get("run_id"),
-                    stage="planning"
-                )
             
-
-            await self.emit_stage.emit_staging_start(
-                run_id=state.get("run_id"),
-                stage="building_stretegy",
-                message="Building a personalized job stretegy..."
-            )
 
             try:  
                 with tracer.start_as_current_span("llm.response") as llm_span:
@@ -626,13 +613,14 @@ class AgentNodes:
 
                     try:
                         stretegy = json.loads(response.content)
-                    except Exception as e:
-                        logger.error(f"Error in Planner node:{e} | raw={response.content}")
-                        stretegy = {}
+                    finally:
+                        await self.emit_stage.emit_staging_done(
+                            run_id=state.get("run_id"),
+                            stage="planning",
 
+                        )
 
                     llm_span.set_attribute("llm.latency_seconds", time.time() - llm_latency)
-
 
                     usage = getattr(response, "usage", None)
 
@@ -657,11 +645,6 @@ class AgentNodes:
                     llm_span.set_status(Status(StatusCode.ERROR, str(e)))
                 parent_span.set_status(Status(StatusCode.ERROR, str(e)))
             
-            
-            await self.emit_stage.emit_staging_done(
-                run_id=state.get("run_id"),
-                stage="building_stretegy",
-            )
 
             if 'run_id' not in state or not state.get('run_id'):
                 logger.warning('run id is missing in job scraper node')
@@ -851,15 +834,15 @@ class AgentNodes:
                 logger.info(f"📍 Location: {location}")
                 
                 try:
+                    # Emitting event
+                    await self.emit_stage.emit_staging_start(
+                        run_id=state.get("run_id"),
+                        stage="Scraping_jobs",
+                        message="Searching across multiple job multiple platforms"
+                    )
 
                     shared_context = self.agent_app.multi_agent_orchestrator.shared_context
                     event_bus = self.agent_app.multi_agent_orchestrator.event_bus
-
-                    await self.emit_stage.emit_staging_start(
-                        run_id=state.get("run_id"),
-                        stage="calling_job_api",
-                        message="Searching accross multiple job platforms...."
-                    )
                 
                     async with IntelligentJobScraper(shared_context, event_bus) as scraper:
                         jobs = await scraper.scrape_all_sources(
@@ -874,11 +857,6 @@ class AgentNodes:
                     if workflow_type == "autonomous_workflow" and source_config:
                         await self.shared_context.pop(f"job_source_config_{run_id}")
                         logger.warning(f"Popping jobs Source config key:{run_id}")
-
-                    await self.emit_stage.emit_staging_done(
-                        run_id=state.get("run_id"),
-                        stage="calling_job_api"
-                    )
 
                     unique_jobs = []
                     seen = set()
@@ -990,6 +968,12 @@ class AgentNodes:
                 parent_span.set_attribute("scraper.cache_hit", bool(cached_jobs and cached_jobs.get("metadatas")))
                 parent_span.set_attribute("scraper.cached_job_count", len(cached_jobs.get("metadatas", [])) if cached_jobs else 0)
                 parent_span.set_attribute("scraper.success", len(unique_jobs) > 0)
+
+                await self.emit_stage.emit_staging_done(
+                    run_id=state.get("run_id"),
+                    stage="Scraping_jobs"
+                )
+
                 return state
 
             except Exception as e:
@@ -1031,6 +1015,12 @@ class AgentNodes:
             parent_span.set_attribute("matcher", "node" )
 
             try:
+                await self.emit_stage.emit_staging_start(
+                    run_id=state.get("run_id"),
+                    stage="matching_resume",
+                    message="Matching your resume the best jobs out there"
+                )
+
                 resume_text = state.get('resume_text')
                 user_id = state.get("user_id")
                 jobs = state.get('jobs_data',[])
@@ -1091,12 +1081,6 @@ class AgentNodes:
                 
                 logger.info(f" Matching resume within {len(jobs)}")
 
-                await self.emit_stage.emit_staging_start(
-                            run_id=state.get("run_id"),
-                            stage="matching_resume",
-                            message="Finding best matches for your profile...."
-                        )
-
                 # Tracing emebedding with opentelemetry
                 with tracer.start_as_current_span("matcher.embeddings") as embed_span:
                     start_embed =  time.time()
@@ -1107,7 +1091,7 @@ class AgentNodes:
                         logger.warning(f"Resume matcher node model type: {type(self.memory_system.embedding_model)}")
 
                         hybrid_retriever = HybridRetriever(
-                            self.memory_system.embedding_model,
+                            self.embedding_model,
                             reranker_model
                         )
     
@@ -1148,12 +1132,6 @@ class AgentNodes:
 
                             matched_jobs.append(job)
 
-                        await asyncio.sleep(0.3)
-
-                        await self.emit_stage.emit_staging_done(
-                            run_id=state.get("run_id"),
-                            stage="matching_resume"
-                        )
 
                         for job in matched_jobs:
                             job['rerank_score'] =float(job.get('rerank_score', 0))
@@ -1249,7 +1227,14 @@ class AgentNodes:
                 parent_span.set_attribute("matcher.matched_count", len(matched_jobs))
                 parent_span.set_attribute("matcher.avg_score", avg_score)
                 parent_span.set_attribute("matcher.success", len(matched_jobs) > 0)
+
+                await self.emit_stage.emit_staging_done(
+                    run_id=state.get("run_id"),
+                    stage="matching_resume"
+                )
+
                 return state
+                
 
             except Exception as e:
                 parent_span.record_exception(e)
@@ -1261,6 +1246,12 @@ class AgentNodes:
 
     async def job_quality_checker_node(self, state: AgentState, config) ->AgentState:
         """Quality Check for the job matching results"""
+
+        await self.emit_stage.emit_staging_start(
+            run_id=state.get("run_id"),
+            stage="checking_quality",
+            message="Checking the quality of fetched jobs professionally"
+        )
 
         matched_jobs = state.get('matched_jobs', [])
 
@@ -1291,26 +1282,12 @@ class AgentNodes:
         if incomplete > len(matched_jobs) / 2:
             quality_check['issues'].append(f"{incomplete} job missing description")
             quality_check['quality_score'] -= 0.1
-        
-        await self.emit_stage.emit_staging_start(
-            run_id=state.get("run_id"),
-            stage="quality_checking",
-            message="checking matching result's quality..."
-        )
 
-        await asyncio.sleep(3.0)
 
         quality_check['quality_score'] = max(0.0, min(1.0, quality_check['quality_score']))
 
         state['quality_check']= quality_check
         state['validation_results']['quality_check'] = quality_check
-
-        await asyncio.sleep(0.2)
-          
-        await self.emit_stage.emit_staging_done(
-            run_id=state.get("run_id"),
-            stage="quality_checking"
-        )
         
         if not quality_check['passed']:
             state['confidence_score'] = min(state.get('confidence_score', 0.5), quality_check['quality_score'])
@@ -1330,6 +1307,11 @@ class AgentNodes:
 
         logger.info(f"Quality check {quality_check['quality_score']:.2f} ) -"
              f"{'PASSED' if quality_check['passed'] else 'FAILED'}")
+        
+        await self.emit_stage.emit_staging_done(
+            run_id=state.get("run_id"),
+            stage="checking_quality"
+        )
         
         state = convert_numpy_types(state)
         
@@ -1402,12 +1384,11 @@ class AgentNodes:
                     await self.emit_stage.emit_staging_start(
                         run_id=state.get("run_id"),
                         stage="storing_jobs",
-                        message="storing jobs"
+                        message="storing high quality fetched jobs"
                     )
 
                     ## Extract Skills from state
                     skills = state.get('job_keywords', [])
-                    
 
                     #Store Resume
                     resume_id = await self.agent_app.memory.store_resume(
@@ -1417,11 +1398,6 @@ class AgentNodes:
                         skills=skills,
                         experience_years=self._estimate_experience(resume_text),
                         metadata= {'task_id': state['task_id']}
-                    )
-
-                    await self.emit_stage.emit_staging_done(
-                        run_id=state.get("run_id"),
-                        stage="storing_jobs"
                     )
 
                     logger.info(f"Resume stored in memory: {resume_id} |  user_id={user_id}")
@@ -1440,6 +1416,7 @@ class AgentNodes:
                 parent_span.set_attribute("memory.resume_length", len(resume_text))
                 parent_span.set_attribute("memory.resume_stored", bool(resume_id))
                 parent_span.set_attribute("memory.skills_count", len(skills))
+
                 return state
             
             except Exception as e:
@@ -1448,10 +1425,12 @@ class AgentNodes:
                 return state
 
             finally:
+                await self.emit_stage.emit_staging_done(
+                        run_id=state.get("run_id"),
+                        stage="storing_jobs"
+                    )
+
                 parent_span.set_attribute("memory.latency_seconds", time.time() - start_memory)
-            
-
-
     
     async def memory_retrieval_node(self, state:AgentState, config)->AgentState:
         """New: Retrive RAG Context before Matching"""
@@ -1491,11 +1470,6 @@ class AgentNodes:
                     "context_quality": rag_context.get("context_quality", 0.0),
                 }
 
-                await self.emit_stage.emit_staging_done(
-                    run_id=state.get("run_id"),
-                    stage="retrieving_context"
-                )
-
 
                 logger.info(f"🧠 RAG Context normalized: {len(rag_context['similar_resumes'])} similar resumes found")
                 # Store context in state for other nodes to use
@@ -1529,6 +1503,11 @@ class AgentNodes:
                 parent_span.set_status(Status(StatusCode.ERROR, str(e)))
                 return state
             finally:
+                await self.emit_stage.emit_staging_done(
+                    run_id=state.get("run_id"),
+                    stage="retrieving_context"
+                )
+
                 parent_span.set_attribute("retrieval.latency_seconds", time.time() - start_retrieval)
 
 
@@ -1539,6 +1518,12 @@ class AgentNodes:
             parent_span.set_attribute("job_storage", "node")
 
             try:
+                await self.emit_stage.emit_staging_start(
+                    run_id=state.get("run_id"),
+                    stage="Storing_jobs",
+                    message="Storing jobs in memory"
+                )
+
                 jobs = state.get('jobs_data', [])
                 
                 if not jobs:
@@ -1626,6 +1611,11 @@ class AgentNodes:
                 parent_span.set_status(Status(StatusCode.ERROR, str(e)))
                 return state
             finally:
+                await self.emit_stage.emit_staging_done(
+                    run_id=state.get("run_id"),
+                    stage="Storing_jobs"
+                )
+    
                 parent_span.set_attribute("memory_job.latency_seconds", time.time() - start_job_storage)
             
     async def memory_learning_node(self, state:AgentState, config)->AgentState:
@@ -1746,11 +1736,6 @@ class AgentNodes:
 
                 logger.info(f"Extracted {resume_skills['total_count']} skills from resume")
                 logger.info(f"Categories: {list(resume_skills['categorized'].keys())}")
-                
-                await self.emit_stage.emit_staging_done(
-                    run_id=state.get("run_id"),
-                    stage="skill_analysis"
-                )
 
                 job_skills_analysis = []
                 for job in jobs:
@@ -1800,6 +1785,11 @@ class AgentNodes:
                 parent_span.set_status(Status(StatusCode.ERROR, str(e)))
                 return state
             finally:
+                await self.emit_stage.emit_staging_done(
+                    run_id=state.get("run_id"),
+                    stage="skill_analysis"
+                )
+
                 parent_span.set_attribute("skills.latency_seconds", time.time() - start_skill_analysis)
     
     async def intelligent_ranker_node(self, state: AgentState, config) ->AgentState:
@@ -1871,10 +1861,6 @@ class AgentNodes:
                     'timestamp': datetime.now().isoformat()
                 })
                 
-                await self.emit_stage.emit_staging_done(
-                    run_id=state.get("run_id"),
-                    stage="ranking_jobs"
-                )
                 logger.info(f" Ranked {len(ranked_jobs)} jobs - Top score: {ranked_jobs[0]['composite_score']:.2f}" if ranked_jobs else "No jobs to work")
 
                 parent_span.set_attribute("ranked.received_jobs", len(matched_jobs))
@@ -1888,6 +1874,11 @@ class AgentNodes:
                 parent_span.set_status(Status(StatusCode.ERROR, str(e)))
                 return state
             finally:
+                await self.emit_stage.emit_staging_done(
+                    run_id=state.get("run_id"),
+                    stage="ranking_jobs"
+                )
+
                 parent_span.set_attribute("ranker.latency_seconds", time.time() - start_intelligent_ranker)
 
     def _calculate_composite_score(self, job: Dict, skill_comp: Dict, rag_context: Dict, user_prefs: Dict) ->Dict:

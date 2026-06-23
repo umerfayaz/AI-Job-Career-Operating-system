@@ -26,7 +26,7 @@ class Models:
 
         for model in  models:
             try:
-                response = await self.client.json_completion(
+                response = await self.client.chat.completions.create(
                     model=model,
                     temperature=temperature,
                     response_format={"type": "json_object"},

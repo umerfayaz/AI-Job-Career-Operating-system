@@ -39,10 +39,12 @@ class MemoryRAGSystem:
             model_name="BAAI/bge-large-en-v1.5",
             normalize_embeddings=True
         )
+        logger.warning("EmbeddingFunction model calling in MemoryRAG")
 
         self.embedding_model = SentenceTransformer(
             "BAAI/bge-large-en-v1.5"
         )
+        logger.warning("Embedding model calling inside MemoryRAG")
 
         self._initialize_collections()
 

@@ -738,7 +738,9 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                 return {"status": "error", "reason": "empty_embeddings", "action": "match"}
             
             matches_created = 0
+            existing_match_count = 0
             threshold = decision.get("threshold", self.match_threshold)
+            soft_threshold = threshold - 0.08
             target_user_id = None
             sim = None  # ensure defined for post-loop use
             
@@ -798,7 +800,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                     
                     for j in top_idx:
                         score = float(sim[j])
-                        if score < threshold:
+                        if score < soft_threshold:
                             continue
 
                         job_id = jobs['ids'][j]
@@ -826,6 +828,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                                 limit=1
                             )
                             if already_matched and already_matched.get("ids"):
+                                existing_match_count +=1
                                 logger.info(f"Skipping duplicate match {job_id} for {resume_id}")
                                 continue
                         except Exception as e:
@@ -874,12 +877,13 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             await self.shared_context.update_metrics("matches_created_today", matches_created)
 
             matched_job_ids = []
+            total_available_matches = matches_created + existing_match_count
 
             if sim is not None:
                 matched_job_ids = [
                     job_ids[i]
                     for i, score in enumerate(sim)
-                    if score >= threshold
+                    if score >= soft_threshold
                 ]
 
             if matched_job_ids:
@@ -899,9 +903,9 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             await self.shared_context.write("new_jobs_available", None, self.name)
 
             # Signal new matches
-            if matches_created >= 1:
+            if total_available_matches >= 1:
                 await self.shared_context.write("new_matches_available", {
-                    "count": matches_created,
+                    "count": total_available_matches,
                     "timestamp": datetime.now().isoformat(),
                     "target_user_id": target_resume_id,
                     "run_id": run_id
@@ -910,14 +914,14 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
 
             await self.emitter.done(
                 run_id,
-                f"Resume Matching created {matches_created} strong matches found"
+                f"Resume Matching created {total_available_matches} strong matches found"
             )
 
             await asyncio.sleep(3.0)
 
             return {
                 "status": "success",
-                "matches_created": matches_created,
+                "matches_created": total_available_matches,
                 "action": "match"
             }
 

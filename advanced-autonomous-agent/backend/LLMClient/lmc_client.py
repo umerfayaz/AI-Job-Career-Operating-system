@@ -1,7 +1,6 @@
 from groq import Groq
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
-from backend.LLMGateway.fallbackmodels import Models
 from backend.config.settings import Settings
 import structlog
 from typing import Dict
@@ -15,7 +14,6 @@ class LMCClient:
     def __init__(self):
         self.settings = Settings()
         self.client = Groq(api_key=self.settings.GROQ_API_KEY)
-        self.model = Models(self.client)
 
     async def generate_job_report(self, resume_text: str, matches: dict) -> str:
         """Generate a comprehensive professional job report
@@ -224,8 +222,8 @@ class LMCClient:
                     start_llm = time.time()
                     llm_span.set_attribute("llm.model", "openai/gpt-oss-120b")
 
-                    response =  await self.models.json_completion(
-                        task_type="stretegic_reasoning",    
+                    response = self.client.chat.completions.create(
+                        model = "openai/gpt-oss-120b",   
                         messages=[
                             {
                                 "role": "system", 
@@ -236,11 +234,11 @@ class LMCClient:
                         temperature=0.2
                     )
 
-                    MODEL_NAME = response.get("model", "unknown")
+                    MODEL_NAME = response.model
 
-                    logger.warnint(f"Model called for  Report geneartion: {MODEL_NAME}")
+                    logger.warning(f"Model called for  Report geneartion: {MODEL_NAME}")
 
-                    usage = getattr(response, "usage", 0)
+                    usage = response.usage
 
                     if usage:
                         llm_span.set_attribute("llm.prompt", prompt[:500])
@@ -252,13 +250,13 @@ class LMCClient:
                     MODEL_COSTS = {
                         MODEL_NAME: 0.0001
                     }
-                    cost = (total_tokens / 1000) * MODEL_COSTS.get(self.model)
+                    cost = (total_tokens / 1000) * MODEL_COSTS.get(MODEL_NAME, 0.0001)
 
                     llm_span.set_attribute("llm.model", MODEL_NAME)
                     llm_span.set_attribute("llm.total_estimated_cost_usd", cost)
                     llm_span.set_attribute("llm.latency_seconds", time.time() - start_llm)
 
-                    report = response.choices[0].message.content
+                    report = response.choices[0].message.content or ""
                     
                     # POST-PROCESS: Convert any remaining APPLY_URL markers to markdown links
                     report = self._clean_urls_in_report(report, match_list)

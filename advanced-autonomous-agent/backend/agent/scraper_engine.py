@@ -52,7 +52,7 @@ class IntelligentJobScraper:
         self, keywords: List[str],run_id: str, location: str = "Remote", max_results: int = 100, preferred_source="JSearch",
     ) -> List[Dict]:
         """Scrape using only real APIs, fallback if first fails."""
-        with tracer.start_as_current_span("JobScraper.scrape_all_sources") as parent_span:
+        with tracer.start_as_current_span("JobScraper.scrape_all_sources") as parent_span: 
 
             try:
                 parent_span.set_attribute("keywords.count", len(keywords))
@@ -222,7 +222,10 @@ class IntelligentJobScraper:
                     "X-RapidAPI-Key": self.rapidapi_key,
                     "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
                 }
-                params = {"query": f"{query} {location}", "num_pages": "1"}
+
+                params = {"query": f"{query} {location}",  "num_pages": "1"}
+
+                logger.warning(f"Jsearch Params: {params}")
 
                 async with self.session.get(url, headers=headers, params=params) as response:
                     if response.status == 200:
