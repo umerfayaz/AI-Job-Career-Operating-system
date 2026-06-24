@@ -41,7 +41,12 @@ class IntelligentJobScraper:
     async def __aenter__(self):
         import socket
         connector = aiohttp.TCPConnector(family=socket.AF_INET, force_close=True)
-        self.session = aiohttp.ClientSession( connector=connector,timeout=aiohttp.ClientTimeout(total=20))
+        self.session = aiohttp.ClientSession( connector=connector,timeout=aiohttp.ClientTimeout(
+            total=45,
+            connect=10,
+            sock_read=55
+        ))
+
         return self
 
     async def __aexit__(self, *args):
@@ -67,21 +72,21 @@ class IntelligentJobScraper:
                 if preferred_source == "Remotive":
                     source_functions = [
                         (1, self.scrape_remotive, "Remotive"),
-                        # (2,  self.scrape_jsearch, "JSearch (Indeed/Linkedin)")
+                        (2,  self.scrape_jsearch, "JSearch (Indeed/Linkedin)")
                     ]
                     logger.warning("Remotive Calling in Intelligent Scraper")
                 
                 elif preferred_source == "JSearch":
                     source_functions = [
                         (1, self.scrape_jsearch, "JSearch (Indeed/LinkedIn)"),
-                        # (2, self.scrape_remotive, "Remotive")
+                        (2, self.scrape_remotive, "Remotive")
                     ]
                     logger.warning("JSearch API Calling inside intelligent Scraper")
                 
                 else:
                     source_functions = [
                         (1, self.scrape_jsearch, "JSearch (Indeed/Linkedin)"),
-                        # (2, self.scrape_remotive, "Remotive")
+                        (2, self.scrape_remotive, "Remotive")
                     ]
                     logger.warning("Jsearch API Calling inside intelligent Scraper")
 
@@ -95,7 +100,7 @@ class IntelligentJobScraper:
                         continue
 
                     try:
-                        result = await asyncio.wait_for(func(keywords, location, max_results), timeout=15)
+                        result = await asyncio.wait_for(func(keywords, location, max_results), timeout=50)
                         if result:
                             all_jobs.extend(result)
                             sources_succeeded.append(name)
@@ -248,6 +253,9 @@ class IntelligentJobScraper:
                     api_span.set_attribute("api.source", "Jsearch")
                     return jobs
             
+            except (asyncio.TimeoutError, aiohttp.ServerTimeoutError, aiohttp.ClientConnectorError) as e:
+                logger.warning(f"JSearch timeout/connection error: {str(e)}")
+                return []
             except Exception as e:
                 logger.error(f"JSearch Api error: {str(e)}")
                 api_span.record_exception(e)

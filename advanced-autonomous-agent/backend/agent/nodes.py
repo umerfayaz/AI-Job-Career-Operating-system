@@ -1013,6 +1013,7 @@ class AgentNodes:
         with tracer.start_as_current_span("matcher_node.state") as parent_span:
             start_matcher = time.time()
             parent_span.set_attribute("matcher", "node" )
+            workflow_type = state.get("workflow_type", "frontend_workflow")
 
             try:
                 await self.emit_stage.emit_staging_start(
@@ -1086,23 +1087,25 @@ class AgentNodes:
                     start_embed =  time.time()
                     
                     try:
-                        reranker_model = self._get_reranker_model()
+                        if workflow_type == "autonomous_workflow":
+                            reranker_model = self._get_reranker_model()
 
-                        logger.warning(f"Resume matcher node model type: {type(self.memory_system.embedding_model)}")
+                            logger.warning(f"Resume matcher node model type: {type(self.memory_system.embedding_model)}")
 
-                        hybrid_retriever = HybridRetriever(
-                            self.embedding_model,
-                            reranker_model
-                        )
-    
-                        canidate_jobs = hybrid_retriever.retrieve(
-                            resume_text=resume_text,
-                            user_id=user_id,
-                            jobs=jobs,
-                            top_k=30
-                        )
-
-                        logger.warning(f" Hybrid returned {len(canidate_jobs)} jobs")
+                            hybrid_retriever = HybridRetriever(
+                                self.embedding_model,
+                                reranker_model
+                            )
+        
+                            canidate_jobs = hybrid_retriever.retrieve(
+                                resume_text=resume_text,
+                                user_id=user_id,
+                                jobs=jobs,
+                                top_k=30
+                            )
+                        else:
+                            canidate_jobs = jobs[:10]
+                            logger.warning(f" Hybrid returned {len(canidate_jobs)} jobs")
 
                         matched_jobs = []
                         seen_job_urls = set()
