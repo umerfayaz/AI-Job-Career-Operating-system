@@ -30,7 +30,7 @@ class OutComeLoop:
         self.is_running = False
 
         self.no_response_days = 3
-        self.dead_application = 0
+        self.dead_application = 5
         self.reply_threshold = 0.2
         self.no_reply_threshold = 0.5
         self._shutdown_event = asyncio.Event()

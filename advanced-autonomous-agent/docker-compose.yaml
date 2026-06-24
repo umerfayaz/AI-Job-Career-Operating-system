@@ -21,9 +21,12 @@ services:
       - ./model_cache:/root/.cache
 
     depends_on:
-      - redis
-      - jaeger
-      - postgres
+        redis:
+          condition: service_healthy
+        jaeger:
+          condition: service_started
+        postgres:
+          condition: service_healthy
     restart: unless-stopped
 
 
@@ -40,6 +43,12 @@ services:
 
   redis:
     image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
     container_name: agentic-redis
     ports:
       - "6379:6379"
@@ -50,6 +59,11 @@ services:
 
   postgres:
     image: postgres:17
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentic_ai_saas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
     container_name: agentic_saad
 
