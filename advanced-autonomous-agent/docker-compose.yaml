@@ -79,9 +79,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  
+  nginx:
+    image: nginx:alpine
+    container_name: agentic-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
 
 volumes:
   redis_data:
   postgres_data:
+
 
 
