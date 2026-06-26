@@ -194,98 +194,69 @@ Detailed compatibility reports with skill analysis, qualification assessment, an
 ## Production Architecture
 
 ```mermaid
-flowchart TD
+```mermaid
+flowchart TB
 
-User((User / Recruiter))
+    U[User / Recruiter]
 
-subgraph Internet["Internet Layer"]
-Domain[Domain / VPS IP]
-HTTPS[HTTPS - Let's Encrypt]
-end
+    subgraph L1["Access Layer"]
+        D[Domain or VPS IP]
+        N[Nginx Reverse Proxy]
+    end
 
-subgraph VPS["Ubuntu VPS"]
-Docker[Docker Compose]
+    subgraph L2["Application Layer"]
+        FE[React + Vite Frontend]
+        API[FastAPI Backend]
+    end
 
-subgraph Gateway["Gateway Layer"]
-Nginx[Nginx Reverse Proxy]
-end
+    subgraph L3["AI Orchestration Layer"]
+        LG[LangGraph Workflow Engine]
+        SA[Strategic Planning Agent]
+        MA[Specialized Sub-Agents]
+    end
 
-subgraph Frontend["Frontend Container"]
-React[React + Vite UI]
-FrontendNginx[Frontend Nginx]
-end
+    subgraph L4["AI Intelligence Layer"]
+        RAG[RAG + Hybrid Retrieval]
+        RR[Reranking Pipeline]
+        LLM[Groq LLM Fallback Router]
+    end
 
-subgraph Backend["Backend Container"]
-FastAPI[FastAPI API]
-Auth[JWT Auth + Redis Sessions]
-LangGraph[LangGraph Workflow Engine]
-Strategic[Strategic Planning Agent]
-Matcher[Resume Matcher Agent]
-Retriever[Job Retrieval Agent]
-Report[Report Generator Agent]
-FollowUp[Follow-Up Agent]
-Source[Source Optimization Agent]
-LLMRouter[Groq LLM Fallback Router]
-end
+    subgraph L5["Data & State Layer"]
+        PG[(PostgreSQL)]
+        RD[(Redis)]
+        CH[(ChromaDB)]
+    end
 
-subgraph Storage["Data Layer"]
-Postgres[(PostgreSQL)]
-Redis[(Redis)]
-Chroma[(ChromaDB)]
-end
+    subgraph L6["External & Observability"]
+        JOBS[JSearch + Remotive APIs]
+        SMTP[Email / SMTP]
+        OBS[OpenTelemetry + Jaeger]
+    end
 
-subgraph External["External Services"]
-JSearch[JSearch API]
-Remotive[Remotive API]
-Groq[Groq Models]
-SMTP[Email / SMTP]
-end
+    U --> D
+    D --> N
 
-subgraph Observability["Observability"]
-Jaeger[Jaeger]
-OTEL[OpenTelemetry]
-end
-end
+    N --> FE
+    N --> API
 
-User --> Domain
-Domain --> HTTPS
-HTTPS --> Nginx
+    API --> LG
+    API --> PG
+    API --> RD
 
-Nginx --> FrontendNginx
-FrontendNginx --> React
+    LG --> SA
+    SA --> MA
 
-Nginx --> FastAPI
+    MA --> RAG
+    RAG --> CH
+    RAG --> RR
+    MA --> LLM
 
-FastAPI --> Auth
-FastAPI --> LangGraph
+    MA --> JOBS
+    MA --> SMTP
 
-LangGraph --> Strategic
-Strategic --> Matcher
-Strategic --> Retriever
-Strategic --> Report
-Strategic --> FollowUp
-Strategic --> Source
+    API --> OBS
+```
 
-Retriever --> JSearch
-Retriever --> Remotive
-
-Strategic --> LLMRouter
-LLMRouter --> Groq
-
-Matcher --> Chroma
-FastAPI --> Postgres
-FastAPI --> Redis
-Report --> SMTP
-
-FastAPI --> OTEL
-OTEL --> Jaeger
-
-Docker -. manages .-> Nginx
-Docker -. manages .-> FrontendNginx
-Docker -. manages .-> FastAPI
-Docker -. manages .-> Postgres
-Docker -. manages .-> Redis
-Docker -. manages .-> Jaeger
 ```
 
 
