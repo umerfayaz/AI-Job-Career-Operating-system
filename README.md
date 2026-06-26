@@ -191,75 +191,104 @@ Detailed compatibility reports with skill analysis, qualification assessment, an
 
 
 
+## Production Architecture
 
-
-
+```mermaid
 flowchart TD
 
-A[React Frontend]
+User((User / Recruiter))
 
-B[Nginx Reverse Proxy]
+subgraph Internet["Internet Layer"]
+Domain[Domain / VPS IP]
+HTTPS[HTTPS - Let's Encrypt]
+end
 
-C[FastAPI Backend]
+subgraph VPS["Ubuntu VPS"]
+Docker[Docker Compose]
 
-D[Authentication]
+subgraph Gateway["Gateway Layer"]
+Nginx[Nginx Reverse Proxy]
+end
 
-E[LangGraph Workflow]
+subgraph Frontend["Frontend Container"]
+React[React + Vite UI]
+FrontendNginx[Frontend Nginx]
+end
 
-F[Strategic Agent]
+subgraph Backend["Backend Container"]
+FastAPI[FastAPI API]
+Auth[JWT Auth + Redis Sessions]
+LangGraph[LangGraph Workflow Engine]
+Strategic[Strategic Planning Agent]
+Matcher[Resume Matcher Agent]
+Retriever[Job Retrieval Agent]
+Report[Report Generator Agent]
+FollowUp[Follow-Up Agent]
+Source[Source Optimization Agent]
+LLMRouter[Groq LLM Fallback Router]
+end
 
-G[Resume Matcher]
+subgraph Storage["Data Layer"]
+Postgres[(PostgreSQL)]
+Redis[(Redis)]
+Chroma[(ChromaDB)]
+end
 
-H[Job Retrieval]
+subgraph External["External Services"]
+JSearch[JSearch API]
+Remotive[Remotive API]
+Groq[Groq Models]
+SMTP[Email / SMTP]
+end
 
-I[Report Generator]
+subgraph Observability["Observability"]
+Jaeger[Jaeger]
+OTEL[OpenTelemetry]
+end
+end
 
-J[Follow-up Agent]
+User --> Domain
+Domain --> HTTPS
+HTTPS --> Nginx
 
-K[Source Optimization Agent]
+Nginx --> FrontendNginx
+FrontendNginx --> React
 
-L[Groq LLM Router]
+Nginx --> FastAPI
 
-M[Fallback LLM]
+FastAPI --> Auth
+FastAPI --> LangGraph
 
-N[JSearch API]
+LangGraph --> Strategic
+Strategic --> Matcher
+Strategic --> Retriever
+Strategic --> Report
+Strategic --> FollowUp
+Strategic --> Source
 
-O[Remotive API]
+Retriever --> JSearch
+Retriever --> Remotive
 
-P[PostgreSQL]
+Strategic --> LLMRouter
+LLMRouter --> Groq
 
-Q[Redis]
+Matcher --> Chroma
+FastAPI --> Postgres
+FastAPI --> Redis
+Report --> SMTP
 
-R[ChromaDB]
+FastAPI --> OTEL
+OTEL --> Jaeger
 
-S[Jaeger / OpenTelemetry]
+Docker -. manages .-> Nginx
+Docker -. manages .-> FrontendNginx
+Docker -. manages .-> FastAPI
+Docker -. manages .-> Postgres
+Docker -. manages .-> Redis
+Docker -. manages .-> Jaeger
+```
 
-A --> B
-B --> C
 
-C --> D
-C --> E
-
-E --> F
-F --> G
-F --> H
-F --> I
-
-F --> J
-F --> K
-
-G --> R
-
-H --> N
-H --> O
-
-F --> L
-L --> M
-
-C --> P
-C --> Q
-
-C --> S
 
 ## Autonomous Architecture
 
