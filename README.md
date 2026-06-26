@@ -12,14 +12,16 @@ GitHub: This repository
 
 ## What It Does
 
-* Upload and parse resumes
-* Extract user skills and career profile
-* Fetch jobs from external job APIs
-* Match jobs using semantic search, hybrid retrieval, and reranking
-* Generate personalized job reports
-* Track applied jobs through status changes
-* Send user notifications and follow-up suggestions
-* Support future autonomous loops for strategic job sourcing
+* Uploads and parses user resumes
+* Extracts skills and career intelligence using AI
+* Fetches jobs from multiple external job APIs with automatic failover
+* Performs semantic retrieval, hybrid retrieval, and reranking for high-quality matching
+* Generates personalized AI-powered job reports
+* Tracks application outcomes and hiring pipeline progress
+* Supports autonomous strategic planning and adaptive job sourcing
+* Uses fallback LLM routing for resilient AI inference
+* Supports production-ready containerized deployment using Docker and Nginx
+
 
 ## High-Level Workflow
 
@@ -68,18 +70,34 @@ User clicks apply link
 
 ### AI / Retrieval
 
-* ChromaDB
+* LangGraph
+* Multi-Agent Orchestration
+* Groq LLMs
+* Automatic LLM Fallback Routing
+* ChromaDB Vector Memory
 * Sentence Transformers
-* Hybrid retrieval
-* Reranking
-* Groq LLM API
+* Hybrid Retrieval (Dense + BM25)
+* Reciprocal Rank Fusion
+* Cross-Encoder Reranking
+* Strategic Reasoning Agents
+* Autonomous Planning
+
 
 ### Data / Infrastructure
 
 * PostgreSQL
 * Redis
+* ChromaDB
+* Docker
 * Docker Compose
-* Jaeger observability
+* Docker Networking
+* Nginx Reverse Proxy
+* Frontend Docker Container
+* Backend Docker Container
+* Container Health Checks
+* Jaeger Distributed Tracing
+* OpenTelemetry
+
 
 
 
@@ -176,20 +194,72 @@ Detailed compatibility reports with skill analysis, qualification assessment, an
 
 
 
-## Architecture
-
-```mermaid
 flowchart TD
-    A[React Frontend] --> B[FastAPI Backend]
-    B --> C[LangGraph Workflow]
-    C --> D[Job Fetching Agent]
-    C --> E[Resume Matcher Agent]
-    C --> F[Report Generator Agent]
-    E --> G[ChromaDB Vector Memory]
-    E --> H[PostgreSQL]
-    B --> I[Redis]
-    F --> J[PDF / Email Report]
-```
+
+A[React Frontend]
+
+B[Nginx Reverse Proxy]
+
+C[FastAPI Backend]
+
+D[Authentication]
+
+E[LangGraph Workflow]
+
+F[Strategic Agent]
+
+G[Resume Matcher]
+
+H[Job Retrieval]
+
+I[Report Generator]
+
+J[Follow-up Agent]
+
+K[Source Optimization Agent]
+
+L[Groq LLM Router]
+
+M[Fallback LLM]
+
+N[JSearch API]
+
+O[Remotive API]
+
+P[PostgreSQL]
+
+Q[Redis]
+
+R[ChromaDB]
+
+S[Jaeger / OpenTelemetry]
+
+A --> B
+B --> C
+
+C --> D
+C --> E
+
+E --> F
+F --> G
+F --> H
+F --> I
+
+F --> J
+F --> K
+
+G --> R
+
+H --> N
+H --> O
+
+F --> L
+L --> M
+
+C --> P
+C --> Q
+
+C --> S
 
 ## Autonomous Architecture
 
@@ -246,13 +316,33 @@ Enabled:
 
 ## Engineering Highlights
 
-* Built a multi-agent AI workflow system
-* Implemented LangGraph-based orchestration
-* Integrated PostgreSQL, Redis, and ChromaDB
-* Designed production-lite and full-autonomous deployment modes
-* Added feature flags for expensive background loops
-* Debugged real deployment issues including Docker, CORS, database networking, and memory limits
-* Designed adaptive job sourcing based on outcome metrics
+* Designed a multi-agent AI architecture using LangGraph
+* Built autonomous strategic planning agents capable of reasoning and delegating work to specialized sub-agents
+* Implemented hybrid retrieval using semantic search, BM25, reciprocal rank fusion, and cross-encoder reranking
+* Added automatic LLM failover across multiple Groq models for resilient inference
+* Implemented multi-source job retrieval with automatic fallback between JSearch and Remotive APIs
+* Containerized both frontend and backend using Docker
+* Configured Docker Compose with container networking and health checks
+* Implemented Nginx reverse proxy for production-ready API routing
+* Integrated PostgreSQL, Redis, and ChromaDB into a unified AI platform
+* Added distributed tracing with OpenTelemetry and Jaeger
+* Designed production-lite and autonomous deployment modes using feature flags
+* Built secure JWT authentication with Redis-backed session management
+
+
+## Reliability & Fault Tolerance
+
+The platform is designed with production resilience in mind.
+
+- Automatic LLM fallback across multiple Groq models
+- Automatic Job API failover between JSearch and Remotive
+- Container health checks
+- Persistent PostgreSQL volumes
+- Persistent Redis storage
+- Docker networking
+- Graceful service startup dependencies
+- Nginx reverse proxy
+
 
 ## Documentation
 
@@ -260,11 +350,35 @@ Enabled:
 * [Workflows](doc/WORKFLOWS.md)
 * [Deployment](doc/DEPLOYEMENT.md)
 
+
 ## Project Status
 
-Current stage: MVP / Beta
+Current Stage: Production-Oriented MVP
 
-The system currently supports resume-based job matching and report generation. Autonomous tracking and strategic refetch workflows are designed for full production deployment.
+Completed
+
+- Multi-Agent Architecture
+- LangGraph Orchestration
+- Hybrid Retrieval
+- Autonomous Strategic Planning
+- Dockerized Frontend
+- Dockerized Backend
+- Docker Networking
+- Nginx Reverse Proxy
+- PostgreSQL
+- Redis
+- OpenTelemetry
+- Jaeger Observability
+
+In Progress
+
+- Ubuntu VPS Deployment
+- HTTPS
+- Domain
+- CI/CD
+- AgentOps
+- LLM Evaluations
+- AI Guardrails
 
 ## Future Roadmap
 
