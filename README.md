@@ -194,70 +194,61 @@ Detailed compatibility reports with skill analysis, qualification assessment, an
 ## Production Architecture
 
 ```mermaid
-```mermaid
 flowchart TB
 
-    U[User / Recruiter]
+U[User / Recruiter]
 
-    subgraph L1["Access Layer"]
-        D[Domain or VPS IP]
-        N[Nginx Reverse Proxy]
-    end
+subgraph L1["Access Layer"]
+D[Domain or VPS IP]
+N[Nginx Reverse Proxy]
+end
 
-    subgraph L2["Application Layer"]
-        FE[React + Vite Frontend]
-        API[FastAPI Backend]
-    end
+subgraph L2["Application Layer"]
+FE[React + Vite Frontend]
+API[FastAPI Backend]
+end
 
-    subgraph L3["AI Orchestration Layer"]
-        LG[LangGraph Workflow Engine]
-        SA[Strategic Planning Agent]
-        MA[Specialized Sub-Agents]
-    end
+subgraph L3["AI Orchestration Layer"]
+LG[LangGraph Workflow Engine]
+SA[Strategic Planning Agent]
+MA[Specialized Sub-Agents]
+end
 
-    subgraph L4["AI Intelligence Layer"]
-        RAG[RAG + Hybrid Retrieval]
-        RR[Reranking Pipeline]
-        LLM[Groq LLM Fallback Router]
-    end
+subgraph L4["AI Intelligence Layer"]
+RAG[RAG + Hybrid Retrieval]
+RR[Reranking Pipeline]
+LLM[Groq LLM Fallback Router]
+end
 
-    subgraph L5["Data & State Layer"]
-        PG[(PostgreSQL)]
-        RD[(Redis)]
-        CH[(ChromaDB)]
-    end
+subgraph L5["Data & State Layer"]
+PG[(PostgreSQL)]
+RD[(Redis)]
+CH[(ChromaDB)]
+end
 
-    subgraph L6["External & Observability"]
-        JOBS[JSearch + Remotive APIs]
-        SMTP[Email / SMTP]
-        OBS[OpenTelemetry + Jaeger]
-    end
+subgraph L6["External & Observability"]
+JOBS[JSearch + Remotive APIs]
+SMTP[Email / SMTP]
+OBS[OpenTelemetry + Jaeger]
+end
 
-    U --> D
-    D --> N
-
-    N --> FE
-    N --> API
-
-    API --> LG
-    API --> PG
-    API --> RD
-
-    LG --> SA
-    SA --> MA
-
-    MA --> RAG
-    RAG --> CH
-    RAG --> RR
-    MA --> LLM
-
-    MA --> JOBS
-    MA --> SMTP
-
-    API --> OBS
+U --> D
+D --> N
+N --> FE
+N --> API
+API --> LG
+API --> PG
+API --> RD
+LG --> SA
+SA --> MA
+MA --> RAG
+RAG --> CH
+RAG --> RR
+MA --> LLM
+MA --> JOBS
+MA --> SMTP
+API --> OBS
 ```
-
-
 
 
 
