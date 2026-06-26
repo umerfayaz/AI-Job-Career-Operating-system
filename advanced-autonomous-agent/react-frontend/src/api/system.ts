@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const BASE_URL =
-  import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+  import.meta.env.VITE_BACKEND_URL || "/api";
 
 export const getSystemStatus = async () => {
   const token = localStorage.getItem("auth_token");

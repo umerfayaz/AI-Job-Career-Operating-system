@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-const BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+const BASE = import.meta.env.VITE_BACKEND_URL || "/api";
 
 export default function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);

@@ -36,7 +36,7 @@ from backend.postgreSQL.init_db import init_db
 from backend.core.email_sender import EmailSender
 from backend.tools.pdf_generator import PDFGenerator
 from backend.redis.redis_memory import redis_client
-from backend.auth.auth_routes import get_current_user, router as auth_router
+from backend.auth.auth_routes import get_current_user, decode_token, router as auth_router
 from backend.brain_outcomeLoop.profile_resolver import active_search_profile_key
 from backend.observability.workflow_metrics import WorkflowMetrics
 from  backend.observability.workflow_instance import metrics_collector
@@ -116,7 +116,9 @@ app = FastAPI(
     title="Unified Agent API", 
     version="2.0.0",
     description="Dual-brain system: LangGraph + Multi-Agents",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json"
 )
 
 # Merging Auth frontend Router with Api file 
@@ -125,6 +127,8 @@ app.include_router(auth_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost",
+        "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8080",
         "https://ai-job-career-operating-system-zv9r.vercel.app"
@@ -587,7 +591,18 @@ async def upload_resume(
 active_websocket_connections = {}
 
 @app.websocket("/ws/events")
-async def websockets_events(websocket: WebSocket):
+async def websockets_events(websocket: WebSocket, token: str = None):
+    if not token:
+        await websocket.close()
+        return
+    
+    try:
+        user_id = await decode_token(token)
+    
+    except:
+        await websocket.close(code=1008)
+        return
+        
     client_ip = websocket.client.host if websocket.client else "unknown"
     connection_id = id(websocket)
     
@@ -1117,6 +1132,11 @@ async def system_state(user_id: str = Depends(get_current_user)):
         "timestamp": datetime.now().isoformat()
     } 
    
+
+@app.get("/api/health")
+async def health_check():
+    return {"status": "healthy", "service": "agentic-backend"}
+
 
 @router.websocket("/ws/{run_id}")
 async def ws_endpoint(ws: WebSocket, run_id: str):

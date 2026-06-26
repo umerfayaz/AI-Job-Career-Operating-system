@@ -697,9 +697,9 @@ const AgentDashboard = () => {
 
       const token = localStorage.getItem("auth_token")
 
-      const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+      const BASE_URL = import.meta.env.VITE_BACKEND_URL || "/api";
 
-      await fetch(`${BASE_URL}/logout`, {
+      await fetch(`${BASE_URL}/auth/logout`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -746,7 +746,7 @@ const AgentDashboard = () => {
     const fetchStats = async () => {
       try {
         const token = localStorage.getItem("auth_token")
-        const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+        const BASE_URL = import.meta.env.VITE_BACKEND_URL || "/api";
 
 
         const res = await fetch(`${BASE_URL}/stats`, {
@@ -774,8 +774,8 @@ const AgentDashboard = () => {
   const connectWebSocket = () => {
     try {
       const token =localStorage.getItem("auth_token")
-      const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
-      const WS_URL  = BASE_URL.replace(/^http/, "ws") + "/ws/events";
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const WS_URL = `${protocol}://${window.location.host}/api/ws/events`;
       const ws = new WebSocket(`${WS_URL}?token=${token}`)
 
       let userId = null;
@@ -1561,7 +1561,7 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
 
     try {
       addLog('📤 Uploading resume to backend...', 'info');
-      const BASE =  import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+      const BASE =  import.meta.env.VITE_BACKEND_URL || "/api";
 
       const token = localStorage.getItem("auth_token")
 
@@ -1592,7 +1592,7 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
       setKeywords('');
     } catch (error: any) {
       addLog('❌ Error: ' + error.message, 'error');
-      addLog('💡 Make sure your backend is running on http://localhost:8000', 'warning');
+      addLog('💡 Make sure your backend is running on /api', 'warning');
     } finally {
       setIsSubmitting(false);
     }
@@ -1727,7 +1727,7 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
 const EmailVerificationSection = ({ addLog, setShowLogs, setReportUrl, taskID, onVerificationSuccess}: any) => {
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+  const BASE_URL = import.meta.env.VITE_BACKEND_URL || "/api";
   const [message, setMessage] = useState({ text: '', type: '' });
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
