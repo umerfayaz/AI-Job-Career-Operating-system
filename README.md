@@ -194,60 +194,88 @@ Detailed compatibility reports with skill analysis, qualification assessment, an
 ## Production Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
 
-U[User / Recruiter]
-
-subgraph L1["Access Layer"]
-D[Domain or VPS IP]
-N[Nginx Reverse Proxy]
+subgraph Client
+    U[User]
+    FE[React + Vite]
 end
 
-subgraph L2["Application Layer"]
-FE[React + Vite Frontend]
-API[FastAPI Backend]
+subgraph Gateway
+    N[Nginx Reverse Proxy]
 end
 
-subgraph L3["AI Orchestration Layer"]
-LG[LangGraph Workflow Engine]
-SA[Strategic Planning Agent]
-MA[Specialized Sub-Agents]
+subgraph Backend
+    API[FastAPI API]
+    AUTH[JWT Authentication]
+    LG[LangGraph Workflow Engine]
 end
 
-subgraph L4["AI Intelligence Layer"]
-RAG[RAG + Hybrid Retrieval]
-RR[Reranking Pipeline]
-LLM[Groq LLM Fallback Router]
+subgraph Agent_System
+    SP[Strategic Planning Agent]
+    JR[Job Retrieval Agent]
+    RM[Resume Matcher Agent]
+    RG[Report Generator Agent]
+    FU[Follow-Up Agent]
+    SO[Source Optimization Agent]
 end
 
-subgraph L5["Data & State Layer"]
-PG[(PostgreSQL)]
-RD[(Redis)]
-CH[(ChromaDB)]
+subgraph AI_Services
+    ROUTER[LLM Fallback Router]
+    RET[RAG + Hybrid Retrieval]
+    RR[Cross-Encoder Reranker]
 end
 
-subgraph L6["External & Observability"]
-JOBS[JSearch + Remotive APIs]
-SMTP[Email / SMTP]
-OBS[OpenTelemetry + Jaeger]
+subgraph Storage
+    PG[(PostgreSQL)]
+    RD[(Redis)]
+    CH[(ChromaDB)]
 end
 
-U --> D
-D --> N
-N --> FE
+subgraph External
+    JS[JSearch API]
+    RE[Remotive API]
+    GROQ[Groq Models]
+    SMTP[SMTP]
+end
+
+subgraph Observability
+    OTEL[OpenTelemetry]
+    JAEGER[Jaeger]
+end
+
+U --> FE
+FE --> N
 N --> API
+
+API --> AUTH
 API --> LG
+
+LG --> SP
+
+SP --> JR
+SP --> RM
+SP --> RG
+SP --> FU
+SP --> SO
+
+JR --> JS
+JR --> RE
+
+RM --> RET
+RET --> RR
+RET --> CH
+
+SP --> ROUTER
+ROUTER --> GROQ
+
 API --> PG
 API --> RD
-LG --> SA
-SA --> MA
-MA --> RAG
-RAG --> CH
-RAG --> RR
-MA --> LLM
-MA --> JOBS
-MA --> SMTP
-API --> OBS
+
+RG --> SMTP
+
+API --> OTEL
+OTEL --> JAEGER
 ```
 
 
