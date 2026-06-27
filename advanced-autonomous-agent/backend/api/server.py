@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Header
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from backend.narration.emitter import AgentEmitter
 from threading import Lock
@@ -40,14 +40,12 @@ from backend.auth.auth_routes import get_current_user, decode_token, router as a
 from backend.brain_outcomeLoop.profile_resolver import active_search_profile_key
 from backend.observability.workflow_metrics import WorkflowMetrics
 from  backend.observability.workflow_instance import metrics_collector
-
+from backend.api.admin_endpoints import router as admin_router
 logger = structlog.get_logger()
 
 # Importing Trunstile key
 TURNSTILE_SECRET= os.getenv("TURNSTILE_SECRET_KEY")
 
-# Importing ADMIN Key
-ADMIN_API_KEY=os.getenv("ADMIN_API_KEY")
 
 # Global unified application
 email_sender = EmailSender()
@@ -59,10 +57,13 @@ pending_workflows: dict = {}
 settings = Settings()
 workflow_lock = Lock()
 router = APIRouter()
+active_websocket_connections = {}
 models = Models(AsyncGroq(api_key=settings.GROQ_API_KEY))
 
-
 user_registry = None
+
+
+
 
 # LIFESPAN - Start BOTH Brains Together
 async def cleanup_old_workflows():
@@ -124,8 +125,14 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
+app.state.pending_workflows = pending_workflows
+app.state.active_websocket_connections = active_websocket_connections
+app.state.workflow_lock = workflow_lock
+app.state.event_bus = event_bus
+
 # Merging Auth frontend Router with Api file 
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -185,28 +192,6 @@ def extract_text_from_file(file_path: str, filename: str) -> str:
     else:
         raise ValueError(f"Unsupported file format: {filename}")
 
-def verify_admin(x_admin_key: str = Header(None)):
-    if not ADMIN_API_KEY:
-        raise HTTPException(status_code=500, detail="ADMIN_API_KEY is not configured")
-    
-    if x_admin_key != ADMIN_API_KEY:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    
-    return True
-
-
-# Admin Live endpoint to see production users
-@app.get("/admin/live")
-async def admin_live_status(_:bool = Depends(verify_admin)):
-    return {
-        "status": "healthy",
-        "active_websocket_users": len(active_websocket_connections),
-        "pending_workflows": len(pending_workflows),
-        "connected_event_clients": len(event_bus.connections),
-        "server_time": datetime.now().isoformat(),
-        "uptime": "Coming Soon"
-    }
-
 # API Endpoint Specially for tasks stats updates for frontend
 @app.get("/stats")
 async def get_stats(user_id: str = Depends(get_current_user)):
@@ -220,82 +205,6 @@ async def get_stats(user_id: str = Depends(get_current_user)):
         "jobs_matched": int(jobs) if jobs else 0,
         "reports_generated": int(reports) if reports else 0,
     }
-
-@app.get("/admin/workflows")
-async def admin_workflows(_:bool = Depends(verify_admin)):
-    with workflow_lock:
-        workflows =  []
-
-        for task_id, workflow in pending_workflows.items():
-            state = workflow.get("initial_stat", {})
-
-            workflows.append({
-                "task_id": state.get("task_id"),
-                "run_id": state.get("run_id"),
-                "user_id": state.get("user_id"),
-               "status": state.get("workflow_typ"),
-               "created_at": state.get("created_at").isoformat() if state.get("created_at") else None,
-               "keywords": state.get("job_keywords", []),
-               "location": state.get("job_location"),
-               "email": state.get("user_email"),
-               "experience_level": state.get("experience_level")
-            })
-
-        return {
-            "status": "healthy",
-            "total_pending_workflows": len(workflows),
-            "workflows": workflows,
-            "server_time": datetime.now().isoformat() 
-        }
-
-@app.get("/admin/metrics")
-async def admin_metrics(_:bool = Depends(verify_admin)):
-    frontend_metrics = await metrics_collector.get_recent(
-        "frontend_metrics",
-        100
-    )
-
-    autonomous_metrics = await metrics_collector.get(
-        "autonomous_metrics",
-        100
-    )
-
-    def summarize(metrics):
-        if not metrics:
-            return {
-                "run": 0,
-                "successful_run": 0,
-                "avg_latency_ms": 0,
-                "latest_latency_ms": 0,
-                "fastest_latency_ms": 0,
-                "slowest_latency_ms": 0,
-                "failed_runs": 0 
-            }
-
-        successful = len([ m for m in metrics if m.get("status") == "success"])
-        failed = len([m for m in metrics if m.get("status") == "failed"])
-
-        latencies = [m.get("avg_latency", 0) for m in metrics]
-
-        return {
-            "runs": len(metrics),
-            "success_rate": round((successful / len(metrics)) * 100, 2),
-            "avg_latency_ms": round(sum(latencies / len(metrics)), 2),
-            "latest_latency_ms": latencies[0],
-            "fastest_latency_ms": min(latencies),
-            "slowest_latency_ms": max(latencies),
-            "failed": failed 
-        }
-
-    return {
-        "frontend_metrics": summarize(frontend_metrics),
-        "autonomous_metrics": summarize(autonomous_metrics),
-        "server_time": datetime.now().isoformat()
-    }
-
-
-
-
 
 
 @app.get("/")
@@ -689,7 +598,6 @@ async def upload_resume(
     finally:
         parent_span.set_attribute("resume.latency_seconds", time.time() - start_resume)
 
-active_websocket_connections = {}
 
 @app.websocket("/ws/events")
 async def websockets_events(websocket: WebSocket, token: str = None):
