@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 from backend.observability.tracer import tracer
 from opentelemetry.trace import Status, StatusCode
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Header
 from pydantic import BaseModel
 from backend.narration.emitter import AgentEmitter
 from threading import Lock
@@ -45,6 +45,9 @@ logger = structlog.get_logger()
 
 # Importing Trunstile key
 TURNSTILE_SECRET= os.getenv("TURNSTILE_SECRET_KEY")
+
+# Importing ADMIN Key
+ADMIN_API_KEY=os.getenv("ADMIN_API_KEY")
 
 # Global unified application
 email_sender = EmailSender()
@@ -182,6 +185,28 @@ def extract_text_from_file(file_path: str, filename: str) -> str:
     else:
         raise ValueError(f"Unsupported file format: {filename}")
 
+def verify_admin(x_admin_key: str = Header(None)):
+    if not ADMIN_API_KEY:
+        raise HTTPException(status_code=500, detail="ADMIN_API_KEY is not configured")
+    
+    if x_admin_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    return True
+
+
+# Admin Live endpoint to see production users
+@app.get("/admin/live")
+async def admin_live_status(_:bool = Depends(verify_admin)):
+    return {
+        "status": "healthy",
+        "active_websocket_users": len(active_websocket_connections),
+        "pending_workflows": len(pending_workflows),
+        "connected_event_clients": len(event_bus.connections),
+        "server_time": datetime.now().isoformat(),
+        "uptime": "Coming Soon"
+    }
+
 # API Endpoint Specially for tasks stats updates for frontend
 @app.get("/stats")
 async def get_stats(user_id: str = Depends(get_current_user)):
@@ -195,6 +220,32 @@ async def get_stats(user_id: str = Depends(get_current_user)):
         "jobs_matched": int(jobs) if jobs else 0,
         "reports_generated": int(reports) if reports else 0,
     }
+
+@app.get("/admin/workflows")
+async def admin_workflows(_:bool = Depends(verify_admin)):
+    with workflow_lock:
+        workflows =  []
+
+        for task_id, workflow in pending_workflows.items():
+            state = workflow.get("initial_stat", {})
+
+            workflows.append({
+                "task_id": state.get("task_id"),
+                "run_id": state.get("run_id"),
+                "user_id": state.get("user_id"),
+               "status": state.get("workflow_typ"),
+               "created_at": state.get("created_at").isoformat() if state.get("created_at") else None,
+               "keywords": state.get("job_keywords", []),
+               "location": state.get("job_location"),
+               "email": state.get("user_email"),
+               "experience_level": state.get("experience_level")
+            })
+
+            return {
+                "total_pending_workflows": len(workflows),
+                "workflows": workflows,
+                "server_time": datetime.now().isoformat() 
+            }
 
 
 @app.get("/")
@@ -602,7 +653,7 @@ async def websockets_events(websocket: WebSocket, token: str = None):
     except:
         await websocket.close(code=1008)
         return
-        
+
     client_ip = websocket.client.host if websocket.client else "unknown"
     connection_id = id(websocket)
     
