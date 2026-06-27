@@ -241,11 +241,61 @@ async def admin_workflows(_:bool = Depends(verify_admin)):
                "experience_level": state.get("experience_level")
             })
 
+        return {
+            "status": "healthy",
+            "total_pending_workflows": len(workflows),
+            "workflows": workflows,
+            "server_time": datetime.now().isoformat() 
+        }
+
+@app.get("/admin/metrics")
+async def admin_metrics(_:bool = Depends(verify_admin)):
+    frontend_metrics = await metrics_collector.get_recent(
+        "frontend_metrics",
+        100
+    )
+
+    autonomous_metrics = await metrics_collector.get(
+        "autonomous_metrics",
+        100
+    )
+
+    def summarize(metrics):
+        if not metrics:
             return {
-                "total_pending_workflows": len(workflows),
-                "workflows": workflows,
-                "server_time": datetime.now().isoformat() 
+                "run": 0,
+                "successful_run": 0,
+                "avg_latency_ms": 0,
+                "latest_latency_ms": 0,
+                "fastest_latency_ms": 0,
+                "slowest_latency_ms": 0,
+                "failed_runs": 0 
             }
+
+        successful = len([ m for m in metrics if m.get("status") == "success"])
+        failed = len([m for m in metrics if m.get("status") == "failed"])
+
+        latencies = [m.get("avg_latency", 0) for m in metrics]
+
+        return {
+            "runs": len(metrics),
+            "success_rate": round((successful / len(metrics)) * 100, 2),
+            "avg_latency_ms": round(sum(latencies / len(metrics)), 2),
+            "latest_latency_ms": latencies[0],
+            "fastest_latency_ms": min(latencies),
+            "slowest_latency_ms": max(latencies),
+            "failed": failed 
+        }
+
+    return {
+        "frontend_metrics": summarize(frontend_metrics),
+        "autonomous_metrics": summarize(autonomous_metrics),
+        "server_time": datetime.now().isoformat()
+    }
+
+
+
+
 
 
 @app.get("/")
