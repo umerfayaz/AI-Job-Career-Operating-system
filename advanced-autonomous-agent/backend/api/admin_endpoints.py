@@ -2,6 +2,9 @@ import os
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from backend.redis.redis_memory import redis_client
 from  backend.observability.workflow_instance import metrics_collector
+from backend.postgreSQL.models import User
+from backend.postgreSQL.database import AsyncSessionLocal
+from sqlalchemy import select, func
 from datetime import datetime
 
 
@@ -143,4 +146,43 @@ async def admin_system(request: Request, _:bool = Depends(verify_admin)):
         "pending_workflows": len(pending_workflows),
         "server_time": datetime.now().isoformat()
     }
+
+@router.get("/users")
+async def admin_users(
+    limit: int = 20,
+    _:bool = Depends(verify_admin)
+):
+
+    async with AsyncSessionLocal() as session:
+        total_stmt = select(func.count()).select_from(User)
+        total_result = await session.execute(total_stmt)
+        total_user = total_result.scalar() or 0
+
+        users_stmt = (
+            select(User).order_by(User.created_at.desc()).limit(limit)
+        )
+
+        user_result = await session.execute(users_stmt)
+        users = user_result.scalars().all()
+
+        return {
+            "status": "healthy",
+            "total_users": total_user,
+            "recent_users": [
+                {
+                    "user_id": user.user_id,
+                    "email": getattr(user, "email", None),
+                    "created_at": user.created_at.isoformat()
+                        if getattr(user, "created_at", None) else None,
+                    "last_active_at": user.last_active_at.isofomrat()
+                        if getattr(user, "last_active_at", None) else None                    
+                }
+                for user in users
+            ],
+            "server_time": datetime.now().isoformat()
+        }
+
+        
+
+
 
