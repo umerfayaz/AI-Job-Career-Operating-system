@@ -27,10 +27,12 @@ async def check_workflow_limit(user_id: str, plan = "free"):
     await redis_client.incr(key)
     await redis_client.expire(key, 86400)
 
+    used = current_count + 1
+
     return {
         "limit": daily_limit,
-        "used": current_count,
+        "used": used,
         "remaining": daily_limit - (current_count + 1),
         "plan": plan 
     }
-    
+

@@ -41,6 +41,7 @@ from backend.brain_outcomeLoop.profile_resolver import active_search_profile_key
 from backend.observability.workflow_metrics import WorkflowMetrics
 from  backend.observability.workflow_instance import metrics_collector
 from backend.api.admin_endpoints import router as admin_router
+from backend.api.user_plan import check_workflow_limit
 logger = structlog.get_logger()
 
 # Importing Trunstile key
@@ -322,6 +323,9 @@ async def upload_resume(
                     detail="Only PDF, DOCX, and TXT files are supported"
                 )
             
+             # Wrofklow Limit 
+            workflow_usage = await check_workflow_limit(user_id, plan="free")
+            
             job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
 
             # Rate limiting
@@ -424,15 +428,15 @@ async def upload_resume(
 
                 llm_span.set_attribute("llm.latency_seconds", time.time() - llm_start)
 
-                usage = response.get("usage")
+                llm_usage = response.get("usage")
 
-                if usage:
+                if llm_usage:
                     llm_span.set_attribute("llm.prompt", prompt[:500])
-                    llm_span.set_attribute("llm.prompt_tokens", getattr(usage, "prompt_tokens", 0))
-                    llm_span.set_attribute("llm.completion_tokens", getattr(usage, "completion_tokens", 0))
-                    llm_span.set_attribute("llm.total_tokens", getattr(usage, "total_tokens", 0))
+                    llm_span.set_attribute("llm.prompt_tokens", getattr(llm_usage, "prompt_tokens", 0))
+                    llm_span.set_attribute("llm.completion_tokens", getattr(llm_usage, "completion_tokens", 0))
+                    llm_span.set_attribute("llm.total_tokens", getattr(llm_usage, "total_tokens", 0))
 
-                    total_tokens = getattr(usage, "total_tokens", 0)
+                    total_tokens = getattr(llm_usage, "total_tokens", 0)
                     MODEL_COSTS = {
                         MODEL_NAME: 0.0001
                     }
@@ -583,6 +587,7 @@ async def upload_resume(
                 "status_endpoint": f"/task/{task_id}",
                 "status": "verification_pending",
                 "verification_required": True,
+                "usage": workflow_usage,
                 "brains_active": {
                     "langgraph": True,
                     "multi_agents": True
@@ -1078,7 +1083,7 @@ async def system_state(user_id: str = Depends(get_current_user)):
         if not metrics:
             return 0
         
-        return metrics[0]["latency_ms"]
+        return metrics[0]["0"]
     
     def fastest_latency(metrics):
         if not metrics:
