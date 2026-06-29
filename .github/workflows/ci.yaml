@@ -32,5 +32,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker Compose services
+        working-directory: advanced-autonomous-agent
         run: |
           docker compose build
