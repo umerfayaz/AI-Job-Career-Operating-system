@@ -5,7 +5,7 @@ from backend.redis.redis_memory import redis_client
 async def check_workflow_limit(user_id: str, plan = "free"):
     daily_limit = 3 if plan == "free" else 25
 
-    today = datetime.now().strtime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d")
     key = f"workflow_limit:{user_id}:{today}"
 
     current = await redis_client.get(key)

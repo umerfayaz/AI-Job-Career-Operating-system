@@ -1083,7 +1083,7 @@ async def system_state(user_id: str = Depends(get_current_user)):
         if not metrics:
             return 0
         
-        return metrics[0]["0"]
+        return metrics[0]["latency_ms"]
     
     def fastest_latency(metrics):
         if not metrics:
