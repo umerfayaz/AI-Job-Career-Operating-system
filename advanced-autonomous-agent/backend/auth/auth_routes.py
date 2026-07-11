@@ -74,7 +74,7 @@ async def decode_token(token: str) -> str:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 # Rate Limiting for signup
-async def rate_limit(key: str, limit: int = 4, window: int = 60, block: bool = True):
+async def rate_limit(key: str, limit: int = 15, window: int = 60, block: bool = True):
     now = int(time.time())
 
     redis_key = f"rate:{key}:{now // window}"
