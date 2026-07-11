@@ -346,8 +346,11 @@ async def upload_resume(
             logger.info(f" Received resume: {file.filename}")
 
             # Save file
+            TEMP_DIR = Path("temp")
+            TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
             safe_path = Path(file.filename).name
-            file_path = f"temp/{resume_id}_{safe_path}"
+            file_path = TEMP_DIR / f"{resume_id}_{safe_path}"
 
             MAX_FILE_SIZE = 30 * 1024 * 1024
             content = await file.read()
