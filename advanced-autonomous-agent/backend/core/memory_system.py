@@ -445,7 +445,11 @@ class MemoryRAGSystem:
             job.get('google_apply_link')
         ) 
 
-        redirect_link = f"http://localhost:8000/apply?job_id={job_id}&user_id={user_id}"
+        redirect_link = (
+            f"{settings.APP_BASE_URL}/apply"
+            f"?job_id={job_id}&user_id={user_id}"
+        )
+        
         
         metadata = {
             'user_id': user_id,

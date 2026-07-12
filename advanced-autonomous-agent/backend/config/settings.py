@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
 from typing import Optional
 from pathlib import Path
 # from dotenv import load_dotenv
@@ -81,6 +80,10 @@ class Settings(BaseSettings):
     ENABLE_TELEMETRY: bool = True
     PROMETHEUS_PORT: int = 9090
     LOG_LEVEL: str = "DEBUG"
+
+    # APP BASE_URL
+    APP_BASE_URL = str
+
 
     # Agent Behavior
     MIN_CONFIDENCE_THRESHOLD: float = 0.75
