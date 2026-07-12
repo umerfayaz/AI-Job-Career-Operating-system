@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     # Pydantic settings configuration
     model_config = SettingsConfigDict(
         extra="ignore",
-        env_file=str(ROOT_DIR / ".env"),
+        env_file=str(env_path),
         env_file_encoding="utf-8",
         case_sensitive=False
     )
