@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "DEBUG"
 
     # APP BASE_URL
-    APP_BASE_URL = str
+    APP_BASE_URL: str
 
 
     # Agent Behavior
