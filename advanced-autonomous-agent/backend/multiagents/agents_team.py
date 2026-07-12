@@ -825,11 +825,25 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                                         {"job_id": job_id}
                                     ]
                                 },
-                                limit=1
+                                limit=1,
+                                include=["metadatas"]
                             )
                             if already_matched and already_matched.get("ids"):
-                                existing_match_count +=1
-                                logger.info(f"Skipping duplicate match {job_id} for {resume_id}")
+                                existing_match_count += 1
+                                existing_match_id = already_matched["ids"][0]
+                                logger.info(f"Duplicate match {job_id} for {resume_id} - refreshing for current run {run_id}")
+
+                                try:
+                                    existing_meta = already_matched["metadatas"][0] if already_matched.get("metadatas") else {}
+                                    updated_meta = {**existing_meta, "is_fresh": True, "run_id": run_id}
+                                    updated_meta = {k: (v if v is not None else "") for k, v in updated_meta.items()}
+                                    self.memory.match_collection.update(
+                                        ids=[existing_match_id],
+                                        metadatas=[updated_meta]
+                                    )
+                                except Exception as tag_err:
+                                    logger.warning(f"Could not refresh duplicate match {job_id}: {tag_err}")
+
                                 continue
                         except Exception as e:
                             logger.warning(f"Duplicate check failed: {e}")
