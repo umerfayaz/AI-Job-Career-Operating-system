@@ -194,7 +194,7 @@ def extract_text_from_file(file_path: str, filename: str) -> str:
         raise ValueError(f"Unsupported file format: {filename}")
 
 # API Endpoint Specially for tasks stats updates for frontend
-@app.get("/stats")
+@app.get("api/stats")
 async def get_stats(user_id: str = Depends(get_current_user)):
 
     tasks = await redis_client.get(f"user:{user_id}:tasks_completed")
@@ -278,7 +278,7 @@ async def apply_jobs(job_id: str, user_id: str):
         span.set_attribute("llm.latency_seconds", time.time() - start_apply)
 
 
-@app.get("/task/{task_id}", response_model=TaskStatusResponse)
+@app.get("api/task/{task_id}", response_model=TaskStatusResponse)
 async def get_task_status(task_id: str):
     """Get status of a specific task"""
     return TaskStatusResponse(
@@ -287,7 +287,7 @@ async def get_task_status(task_id: str):
         result=None
     )
 
-@app.get("/test/event-bus-status")
+@app.get("api/test/event-bus-status")
 async def test_event_bus_status():
     eb = get_event_bus()
     return {
@@ -296,7 +296,7 @@ async def test_event_bus_status():
         "timestamp": datetime.now().isoformat()
     }
 
-@app.post("/resume/upload")
+@app.post("api/resume/upload")
 async def upload_resume(
     file: UploadFile = File(...),
     user_id: str = Depends(get_current_user),
@@ -701,7 +701,7 @@ async def websockets_events(websocket: WebSocket, token: str = None):
         
         await event_bus.disconnect(queue)
 
-@app.post('/resume/verify-email')
+@app.post('api/resume/verify-email')
 async def verify_email(task_id: str = Form(...), code: str =Form(...), user_id: str = Depends(get_current_user)):
     logger.warning(f"DEBUG task_id={task_id}, code={code}")
 
