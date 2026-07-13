@@ -728,7 +728,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             logger.info(f"Prepared {len(job_texts)} job texts for embedding")
             
             # staging event
-            await emit_stage.emit_staging_start(
+            await self.emit_stage.emit_staging_start(
                 run_id,
                 stage="Preparing all fetched jobs",
                 message="Taking out all the necessary information"
@@ -746,7 +746,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                 logger.error("Job embeddings are empty!")
                 return {"status": "error", "reason": "empty_embeddings", "action": "match"}
             
-            await emit_stage.emit_staging_done(
+            await self.emit_stage.emit_staging_done(
                 run_id,
                 stage="Preparing all fetched jobs"
             )

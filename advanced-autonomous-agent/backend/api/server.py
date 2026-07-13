@@ -194,7 +194,7 @@ def extract_text_from_file(file_path: str, filename: str) -> str:
         raise ValueError(f"Unsupported file format: {filename}")
 
 # API Endpoint Specially for tasks stats updates for frontend
-@app.get("api/stats")
+@app.get("/api/stats")
 async def get_stats(user_id: str = Depends(get_current_user)):
 
     tasks = await redis_client.get(f"user:{user_id}:tasks_completed")
