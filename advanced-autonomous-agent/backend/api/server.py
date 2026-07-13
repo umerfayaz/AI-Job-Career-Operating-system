@@ -607,7 +607,7 @@ async def upload_resume(
         parent_span.set_attribute("resume.latency_seconds", time.time() - start_resume)
 
 
-@app.websocket("/ws/events")
+@app.websocket("/api/ws/events")
 async def websockets_events(websocket: WebSocket, token: str = None):
     if not token:
         await websocket.close()
