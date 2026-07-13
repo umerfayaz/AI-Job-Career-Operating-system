@@ -1049,7 +1049,7 @@ async def execute_unified_job_matching(task_id: str, initial_state: dict, config
             span.set_attribute("execute.latency_seconds", time.time() - execute_start)
 
 # SYSTEM workflow observability STATUS ENDPOINTS
-@app.get("/app/system/status")
+@app.get("/api/app/system/status")
 async def system_state(user_id: str = Depends(get_current_user)):
 
     user_id = user_id
