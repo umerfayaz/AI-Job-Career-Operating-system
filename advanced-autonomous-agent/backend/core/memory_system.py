@@ -449,7 +449,7 @@ class MemoryRAGSystem:
             f"{settings.APP_BASE_URL}/apply"
             f"?job_id={job_id}&user_id={user_id}"
         )
-        
+
         
         metadata = {
             'user_id': user_id,
