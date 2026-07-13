@@ -18,6 +18,7 @@ from sentence_transformers import SentenceTransformer
 from ..core.memory_system import MemoryRAGSystem
 from ..core.email_sender import EmailSender
 from backend.narration.emitter import AgentEmitter
+from backend.core.stage_event import EmitStage
 
 def get_agent_app():
     from backend.application import AgentApplication
@@ -426,8 +427,9 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
         self.match_threshold = 0.48
         self.memory = agent_app.memory
         self.multi_agents_orchestrator = multi_agents_orchestrator
-        self.model = agent_app.memory.embedding_model
+        self.model = SentenceTransformer("BAAI/bge-large-en-v1.5")
         self.emitter = AgentEmitter("ResumeMatcherAgent", event_bus)
+        self.emit_stage = EmitStage()
 
     async def perceive(self):
         try:
@@ -725,6 +727,13 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             
             logger.info(f"Prepared {len(job_texts)} job texts for embedding")
             
+            # staging event
+            await emit_stage.emit_staging_start(
+                run_id,
+                stage="Preparing all fetched jobs",
+                message="Taking out all the necessary information"
+            )
+
             # Encode jobs
             try:
                 job_emb = self.model.encode(job_texts)
@@ -736,6 +745,11 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             if job_emb.size == 0:
                 logger.error("Job embeddings are empty!")
                 return {"status": "error", "reason": "empty_embeddings", "action": "match"}
+            
+            await emit_stage.emit_staging_done(
+                run_id,
+                stage="Preparing all fetched jobs"
+            )
             
             matches_created = 0
             existing_match_count = 0
