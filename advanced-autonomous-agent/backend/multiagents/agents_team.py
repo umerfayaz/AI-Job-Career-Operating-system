@@ -426,7 +426,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
         self.match_threshold = 0.48
         self.memory = agent_app.memory
         self.multi_agents_orchestrator = multi_agents_orchestrator
-        self.model = SentenceTransformer("BAAI/bge-large-en-v1.5")
+        self.model = agent_app.memory.embedding_model
         self.emitter = AgentEmitter("ResumeMatcherAgent", event_bus)
 
     async def perceive(self):
