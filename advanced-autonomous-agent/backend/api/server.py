@@ -138,6 +138,13 @@ app.include_router(admin_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+
+        "https://autoagent.space",
+        "https://www.autoagent.space",
+
+        "http://autoagent.space",
+        "http://www.autoagent.space",
+        
         "http://localhost",
         "http://localhost:3000",
         "http://localhost:5173",

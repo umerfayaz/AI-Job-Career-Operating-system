@@ -703,6 +703,8 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                 stage="Preparing all fetched jobs",
                 message="Taking out all the necessary information"
             )
+
+            await asyncio.sleep(0.3)
             
             # Prepare job texts
             job_texts = []
