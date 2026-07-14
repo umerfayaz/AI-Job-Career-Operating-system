@@ -775,6 +775,13 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                     
                     resume_emb = await asyncio.to_thread(self.model.encode,[resume_match_text][0])
                     resume_emb = resume_emb[0]
+
+                    if resume_emb.ndim !=1 or resume_emb.shape[0] != job_emb.shape[0]:
+                        logger.error(
+                            f"Malformed resume embedding shape {resume_emb.shape} for {resume_id}",
+                            f"(expected ({job_emb.shape[1]},)) skipping"
+                        )
+                        continue
                     
                     if len(job_emb.shape) == 1:
                         job_emb_2d = job_emb.reshape(1, -1)
