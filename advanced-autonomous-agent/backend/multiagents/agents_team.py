@@ -726,17 +726,17 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                 return {"status": "error", "reason": "no_job_texts", "action": "match"}
             
             logger.info(f"Prepared {len(job_texts)} job texts for embedding")
-            
-            # staging event
-            await self.emit_stage.emit_staging_start(
-                run_id,
-                stage="Preparing all fetched jobs",
-                message="Taking out all the necessary information"
-            )
 
             # Encode jobs
             try:
-                job_emb = self.model.encode(job_texts)
+                 # staging event
+                await self.emit_stage.emit_staging_start(
+                    run_id,
+                    stage="Preparing all fetched jobs",
+                    message="Taking out all the necessary information"
+                )
+
+                job_emb = await asyncio.to_thread(self.model.encode, job_texts)
                 logger.info(f"Job embeddings shape: {job_emb.shape}")
             except Exception as e:
                 logger.error(f"Failed to encode jobs: {e}")
@@ -746,11 +746,6 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                 logger.error("Job embeddings are empty!")
                 return {"status": "error", "reason": "empty_embeddings", "action": "match"}
             
-            await self.emit_stage.emit_staging_done(
-                run_id,
-                stage="Preparing all fetched jobs"
-            )
-            
             matches_created = 0
             existing_match_count = 0
             threshold = decision.get("threshold", self.match_threshold)
@@ -759,6 +754,11 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             sim = None  # ensure defined for post-loop use
             
             logger.info(f"Using threshold: {threshold}")
+
+            await self.emit_stage.emit_staging_done(
+                run_id,
+                stage="Preparing all fetched jobs"
+            )
             
             # Match each resume
             for idx, resume_id in enumerate(resumes["ids"]):
@@ -773,7 +773,8 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                     resume_keywords = EventMonitor.extract_keywords_from_text(resume_text)
                     resume_match_text = " ".join(resume_keywords)
                     
-                    resume_emb = self.model.encode([resume_match_text])[0]
+                    resume_emb = await asyncio.to_thread(self.model.encode,[resume_match_text][0])
+                    resume_emb = resume_emb[0]
                     
                     if len(job_emb.shape) == 1:
                         job_emb_2d = job_emb.reshape(1, -1)
