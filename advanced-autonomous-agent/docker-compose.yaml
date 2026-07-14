@@ -37,6 +37,13 @@ services:
       - backend
     restart: unless-stopped
 
+  certbot:
+    image: certbot/certbot
+    container_name: agentic-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger
