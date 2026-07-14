@@ -696,6 +696,13 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                 run_id,
                 "Analyzing job matches with accuracy"
             )
+
+            # staging event
+            await self.emit_stage.emit_staging_start(
+                run_id,
+                stage="Preparing all fetched jobs",
+                message="Taking out all the necessary information"
+            )
             
             # Prepare job texts
             job_texts = []
@@ -729,14 +736,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
 
             # Encode jobs
             try:
-                 # staging event
-                await self.emit_stage.emit_staging_start(
-                    run_id,
-                    stage="Preparing all fetched jobs",
-                    message="Taking out all the necessary information"
-                )
-
-                job_emb = await asyncio.to_thread(self.model.encode, job_texts)
+                job_emb = self.model.encode(job_texts)
                 logger.info(f"Job embeddings shape: {job_emb.shape}")
             except Exception as e:
                 logger.error(f"Failed to encode jobs: {e}")
@@ -754,11 +754,6 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             sim = None  # ensure defined for post-loop use
             
             logger.info(f"Using threshold: {threshold}")
-
-            await self.emit_stage.emit_staging_done(
-                run_id,
-                stage="Preparing all fetched jobs"
-            )
             
             # Match each resume
             for idx, resume_id in enumerate(resumes["ids"]):
@@ -773,15 +768,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                     resume_keywords = EventMonitor.extract_keywords_from_text(resume_text)
                     resume_match_text = " ".join(resume_keywords)
                     
-                    resume_emb = await asyncio.to_thread(self.model.encode,[resume_match_text][0])
-                    resume_emb = resume_emb[0]
-
-                    if resume_emb.ndim !=1 or resume_emb.shape[0] != job_emb.shape[0]:
-                        logger.error(
-                            f"Malformed resume embedding shape {resume_emb.shape} for {resume_id}",
-                            f"(expected ({job_emb.shape[1]},)) skipping"
-                        )
-                        continue
+                    resume_emb = self.model.encode([resume_match_text])[0]
                     
                     if len(job_emb.shape) == 1:
                         job_emb_2d = job_emb.reshape(1, -1)
@@ -895,6 +882,11 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                             user_action="auto_created"
                         )
                         matches_created += 1
+                    
+                    await self.emit_stage.staging_done(
+                        run_id,
+                        stage="Preparing all fetched jobs"
+                    )
 
                     await self.emitter.progress(
                         run_id,
