@@ -42,6 +42,7 @@ from backend.observability.workflow_metrics import WorkflowMetrics
 from  backend.observability.workflow_instance import metrics_collector
 from backend.api.admin_endpoints import router as admin_router
 from backend.api.user_plan import check_workflow_limit
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 logger = structlog.get_logger()
 
 # Importing Trunstile key
@@ -134,6 +135,11 @@ app.state.event_bus = event_bus
 # Merging Auth frontend Router with Api file 
 app.include_router(auth_router)
 app.include_router(admin_router)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowd_hosts=["autoagent.space", "www.autoagent.space", "localhost", "127.0.0.1"],
+)
 
 app.add_middleware(
     CORSMiddleware,

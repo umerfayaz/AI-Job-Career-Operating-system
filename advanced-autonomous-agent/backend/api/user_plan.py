@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from backend.redis.redis_memory import redis_client
 
 async def check_workflow_limit(user_id: str, plan = "free"):
-    daily_limit = 10 if plan == "free" else 25
+    daily_limit = 3 if plan == "free" else 25
 
     today = datetime.now().strftime("%Y-%m-%d")
     key = f"workflow_limit:{user_id}:{today}"
