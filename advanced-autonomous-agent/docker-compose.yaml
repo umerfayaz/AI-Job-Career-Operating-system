@@ -47,10 +47,8 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger
-    ports:
-      - "16686:16686"
     expose:
-      - "4317"
+      - "16686"
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     restart: unless-stopped
