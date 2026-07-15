@@ -142,14 +142,10 @@ app.add_middleware(
         "https://autoagent.space",
         "https://www.autoagent.space",
 
-        "http://autoagent.space",
-        "http://www.autoagent.space",
-        
         "http://localhost",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8080",
-        "https://ai-job-career-operating-system-zv9r.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],

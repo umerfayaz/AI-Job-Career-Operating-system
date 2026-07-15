@@ -17,7 +17,7 @@ security = HTTPBearer()
 logger = structlog.get_logger()
 
 
-# Turnstille Secret Key
+# Turnstile Secret Key
 TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY")
 
 # JWT Secret key
@@ -27,6 +27,10 @@ if not JWT_SECRET_KEY:
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 60
+
+# Rate Limtiing for Account locked
+LOCKOUT_THRESHOLD =10
+LOCKOUT_WINDOW =900
 
 
 class SignupRequest(BaseModel):
@@ -92,6 +96,34 @@ async def rate_limit(key: str, limit: int = 4, window: int = 60, block: bool = T
     return count > limit
 
 
+# Locked Account Limit
+async def check_account_locked(email: str):
+
+    key = f"lockout:{email.lower()}"
+    attempts = await redis_client.get(key)
+
+    if attempts and int(attempts) >=LOCKOUT_THRESHOLD:
+        ttl = await redis_client.ttl(key)
+
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed logins. Try again later in {ttl} seconds."
+        )
+
+async def register_failed_login(email:str):
+    key =f"lockout:{email.lower()}"
+
+    attempts = await redis_client.incr(key)
+    if attempts ==1:
+        await redis_client.expire(key, LOCKOUT_WINDOW)
+
+    return attempts
+
+
+async def clear_failed_login(email:str):
+    await redis_client.delete(f"lockout:{email.lower()}")
+
+
 @router.get("/me")
 async def get_me(user_id: str = Depends(get_current_user)):
     db = await get_db_instance()
@@ -135,14 +167,14 @@ async def signup(body: SignupRequest, request: Request):
 
         await rate_limit(
             key = f"sign_ip:{ip}",
-            limit=5,
+            limit=4,
             window=3600,
             block=True
         )
 
         captcha_required = await rate_limit(
             key=f"signup_email:{body.email}",
-            limit=5,
+            limit=4,
             window=3600,
             block=True
         )
@@ -154,7 +186,7 @@ async def signup(body: SignupRequest, request: Request):
                     detail="Captcha token required"
                 )
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     "https://challenges.cloudflare.com/turnstile/v0/siteverify",
                     data = {
@@ -168,7 +200,7 @@ async def signup(body: SignupRequest, request: Request):
                 if not result.get("success"):
                     raise HTTPException(
                         status_code=401,
-                        detail="Caption verification required"
+                        detail="Captcha verification required"
                     )
 
         
@@ -223,17 +255,19 @@ async def login(body: LoginRequest, request: Request):
     try:
         ip = request.client.host
 
+        await check_account_locked(body.email)
+
         await rate_limit(
             key= f"login_ip:{ip}",
-            limit=5,
-            window=300,
+            limit=4,
+            window=600,
             block=True
         )
 
         captcha_required = await rate_limit(
             key=f"login_email:{body.email}",
-            limit=5,
-            window=300,
+            limit=4,
+            window=600,
             block= False
         )
 
@@ -265,9 +299,10 @@ async def login(body: LoginRequest, request: Request):
         user = await db.get_user_by_email(body.email)
 
         if not user:
+            await register_failed_login(body.email)
             raise HTTPException(
                 status_code=400,
-                detail="Invalid credentials"
+                detail="Invalid email or password"
             )
         
         if not bcrypt.checkpw(
@@ -275,12 +310,15 @@ async def login(body: LoginRequest, request: Request):
             user.password_hash.encode()
         ):
           
+          await register_failed_login(body.email)
+        
           raise HTTPException(
             status_code=401,
-            detail="Incorrect password and email"
+            detail="Invalid email or password"
           )
         
         token = create_token(user.user_id)
+        await clear_failed_login(body.email)
 
         # Generating session key
         session_key = f"session:{user.user_id}"

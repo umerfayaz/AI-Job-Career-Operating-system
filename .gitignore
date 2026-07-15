@@ -57,8 +57,4 @@ t
 tatus
 
 # Let's Encrypt
-certbot/conf/live/
-certbot/conf/archive/
-certbot/conf/renewal/
-certbot/conf/accounts/
-certbot/www/
+**/certbot/
