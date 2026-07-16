@@ -139,7 +139,7 @@ app.include_router(admin_router)
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowd_hosts=["autoagent.space", "www.autoagent.space", "localhost", "127.0.0.1"],
+    allowed_hosts=["autoagent.space", "www.autoagent.space", "localhost", "127.0.0.1"],
 )
 
 app.add_middleware(
