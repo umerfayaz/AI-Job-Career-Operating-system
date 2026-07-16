@@ -701,7 +701,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
             await self.emit_stage.emit_staging_start(
                 run_id,
                 stage="Preparing all fetched jobs",
-                message="Taking out all the necessary information"
+                message="Analyzing job requirements and identifying the best matches"
             )
 
             await asyncio.sleep(0.3)
@@ -885,7 +885,7 @@ class ResumeMatcherAgent(BaseAutonomousAgent):
                         )
                         matches_created += 1
                     
-                    await self.emit_stage.staging_done(
+                    await self.emit_stage.emit_staging_done(
                         run_id,
                         stage="Preparing all fetched jobs"
                     )
