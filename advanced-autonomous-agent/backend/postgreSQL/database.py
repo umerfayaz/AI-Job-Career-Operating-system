@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import select, update, desc, distinct
 from datetime import timedelta, datetime, UTC
@@ -74,84 +75,99 @@ class PostgresDatabase:
     async def track_application(self, job_id:str, user_id:str, job_metadata: Dict | None):
 
         try:
-            if job_metadata:
-
-                job_record = {
-                    "job_id": job_id,
-                    "user_id": user_id,
-                    "job": job_metadata.get("job_title", "Unknown"),
-                    "company": job_metadata.get("company", "Unknown"),
-                    "status": "applied",
-                    "applied_at": datetime.now(UTC),
-                    "outcome_at": None,
-                    "source": "workflow_report",
-                    "resume_version": job_metadata.get("resume_id", "v1"),
-                    "last_email_check": None,
-                    "message_id": None,
-                    "clicked_at": datetime.now(UTC),
-                    "no_response_notified": False,
-                    "dead_application_notified": False,
-                    "rejected_notified": False,
-                    "interview_notified": False,
-                    "last_followup_at": datetime.now(UTC),
-                    "followup_count": 0,
-                }
-
-            else:
-                job_record = {
-                    "job_id": job_id,
-                    "user_id": user_id,
-                    "job": "Unknown",
-                    "company": "Unknown",
-                    "status": "applied",
-                    "applied_at": datetime.now(UTC),
-                    "outcome_at": datetime.now(UTC),
-                    "source": "workflow_report",
-                    "resume_version": "v1",
-                    "last_email_check": datetime.now(UTC),
-                    "message_id": None,
-                    "clicked_at": datetime.now(UTC),
-                    "no_response_notified": False,
-                    "dead_application_notified": False,
-                    "rejected_notified": False,
-                    "interview_notified": False,
-                    "last_followup_at": datetime.now(UTC),
-                    "followup_count": 0,
-                }
-
-       
-            stmt = insert(Job).values(**job_record)
-
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["job_id", "user_id"],
-                set_={
-                    "job": stmt.excluded.job,
-                    "company": stmt.excluded.company,
-                    "status": stmt.excluded.status,
-                    "applied_at": stmt.excluded.applied_at,
-                    "outcome_at": stmt.excluded.outcome_at,
-                    "source": stmt.excluded.source,
-                    "resume_version": stmt.excluded.resume_version,
-                    "last_email_check": stmt.excluded.last_email_check,
-                    "message_id": stmt.excluded.message_id,
-                    "clicked_at": stmt.excluded.clicked_at,
-                    "no_response_notified": stmt.excluded.no_response_notified,
-                    "dead_application_notified": stmt.excluded.dead_application_notified,
-                    "rejected_notified": stmt.excluded.rejected_notified,
-                    "interview_notified": stmt.excluded.interview_notified,
-                    "last_followup_at": stmt.excluded.last_followup_at,
-                    "followup_count": stmt.excluded.followup_count,
-                },
-            )
-
             async with AsyncSessionLocal() as session:
+                existing = await session.execute(
+                    select(Job).where(
+                        Job.job_id == job_id,
+                        Job.user_id == user_id
+                    )
+                )
+
+                existing_job = existing.scalar_one_or_none()
+
+                if existing_job:
+                    logger.info(
+                        f"Application already tracked: {job_id}"
+                    )
+                    return False
+
+                if job_metadata:
+                    job_record = {
+                        "job_id": job_id,
+                        "user_id": user_id,
+                        "job": job_metadata.get("job_title", "Unknown"),
+                        "company": job_metadata.get("company", "Unknown"),
+                        "status": "applied",
+                        "applied_at": datetime.now(UTC),
+                        "outcome_at": None,
+                        "source": "workflow_report",
+                        "resume_version": job_metadata.get("resume_id", "v1"),
+                        "last_email_check": None,
+                        "message_id": None,
+                        "clicked_at": datetime.now(UTC),
+                        "no_response_notified": False,
+                        "dead_application_notified": False,
+                        "rejected_notified": False,
+                        "interview_notified": False,
+                        "last_followup_at": datetime.now(UTC),
+                        "followup_count": 0,
+                    }
+
+                else:
+                    job_record = {
+                        "job_id": job_id,
+                        "user_id": user_id,
+                        "job": "Unknown",
+                        "company": "Unknown",
+                        "status": "applied",
+                        "applied_at": datetime.now(UTC),
+                        "outcome_at": datetime.now(UTC),
+                        "source": "workflow_report",
+                        "resume_version": "v1",
+                        "last_email_check": datetime.now(UTC),
+                        "message_id": None,
+                        "clicked_at": datetime.now(UTC),
+                        "no_response_notified": False,
+                        "dead_application_notified": False,
+                        "rejected_notified": False,
+                        "interview_notified": False,
+                        "last_followup_at": datetime.now(UTC),
+                        "followup_count": 0,
+                    }
+
+        
+                stmt = insert(Job).values(**job_record)
+
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["job_id", "user_id"],
+                    set_={
+                        "job": stmt.excluded.job,
+                        "company": stmt.excluded.company,
+                        "status": stmt.excluded.status,
+                        "applied_at": stmt.excluded.applied_at,
+                        "outcome_at": stmt.excluded.outcome_at,
+                        "source": stmt.excluded.source,
+                        "resume_version": stmt.excluded.resume_version,
+                        "last_email_check": stmt.excluded.last_email_check,
+                        "message_id": stmt.excluded.message_id,
+                        "clicked_at": stmt.excluded.clicked_at,
+                        "no_response_notified": stmt.excluded.no_response_notified,
+                        "dead_application_notified": stmt.excluded.dead_application_notified,
+                        "rejected_notified": stmt.excluded.rejected_notified,
+                        "interview_notified": stmt.excluded.interview_notified,
+                        "last_followup_at": stmt.excluded.last_followup_at,
+                        "followup_count": stmt.excluded.followup_count,
+                    },
+                )
+     
                 await session.execute(stmt)
                 await session.commit()
 
             logger.info(f"Application tracked successfully: {job_id}")
+            return True
 
         except Exception as e:
-            logger.error("track_application failed", error=str(e), exc_info=True)
+            logger.error("track_application failed", error=str(e), exc_info=True) 
     
     async def get_applied_jobs(self, user_id: str| None = None, limit: int = 50, offset: int = 0):
         try:

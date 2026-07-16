@@ -232,6 +232,9 @@ async def root():
 
 @app.get("/apply")
 async def apply_jobs(token: str):
+    start_apply = time.time()
+    span = None
+
     try:
         data = apply_serializer.loads(token, max_age= 60 * 60 * 24 * 30)
         job_id = data["job_id"]
@@ -247,7 +250,6 @@ async def apply_jobs(token: str):
     try:
         logger.info(f"Apply endpoint called {job_id} {user_id}")
         with tracer.start_as_current_span("api.job_apply") as span:
-            start_apply = time.time()
 
             agent_app = await get_agent_app()
 
@@ -269,20 +271,20 @@ async def apply_jobs(token: str):
                 logger.error(f"No url for job {job_id}")
                 raise HTTPException(404, "No url found for this job")
             
-            await agent_app.multi_agent_orchestrator.outcome_database.track_application(
+            created= await agent_app.multi_agent_orchestrator.outcome_database.track_application(
                 job_id=job_id,
                 user_id=user_id,
                 job_metadata=metadata
             )
 
-            await event_bus.emit({
-                "type": "JOB_APPLIED",
-                "user_id": user_id,
-                "job_id":job_id,
-                "job_metadata": metadata,
-                "timestamps": datetime.now().isoformat()
-            })
-
+            if created:
+                await event_bus.emit({
+                    "type": "JOB_APPLIED",
+                    "user_id": user_id,
+                    "job_id":job_id,
+                    "job_metadata": metadata,
+                    "timestamps": datetime.now().isoformat()
+                })
 
             logger.info(f" Redirecting to: {real_job_url}")
 
@@ -293,10 +295,12 @@ async def apply_jobs(token: str):
 
     except Exception as e:
         logger.error(f"apply endpoint error: {e}", exc_info=True)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        raise HTTPException(500, f"Failed to process application{str(e)}")
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+        raise HTTPException(status_code=500, detail="Failed to process application")
     finally:
-        span.set_attribute("llm.latency_seconds", time.time() - start_apply)
+        if span:
+            span.set_attribute("llm.latency_seconds", time.time() - start_apply)
 
 
 @app.get("/api/task/{task_id}", response_model=TaskStatusResponse)
