@@ -43,10 +43,13 @@ from  backend.observability.workflow_instance import metrics_collector
 from backend.api.admin_endpoints import router as admin_router
 from backend.api.user_plan import check_workflow_limit
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 logger = structlog.get_logger()
 
 # Importing Trunstile key
 TURNSTILE_SECRET= os.getenv("TURNSTILE_SECRET_KEY")
+apply_serializer = URLSafeTimedSerializer(os.getenv("JWT_SECRET_KEY"))
 
 
 # Global unified application
@@ -63,8 +66,6 @@ active_websocket_connections = {}
 models = Models(AsyncGroq(api_key=settings.GROQ_API_KEY))
 
 user_registry = None
-
-
 
 
 # LIFESPAN - Start BOTH Brains Together
@@ -230,7 +231,18 @@ async def root():
     }
 
 @app.get("/apply")
-async def apply_jobs(job_id: str, user_id: str):
+async def apply_jobs(token: str):
+    try:
+        data = apply_serializer.loads(token, max_age= 60 * 60 * 24 * 30)
+        job_id = data["job_id"]
+        user_id = data["user_id"]
+    except SignatureExpired:
+        raise HTTPException(410, "This application Link has expired")
+    except BadSignature:
+        logger.warning(
+            "Invalid applied token recieved"
+        )
+        raise HTTPException(400, "Inavlid or tapmered link")
 
     try:
         logger.info(f"Apply endpoint called {job_id} {user_id}")

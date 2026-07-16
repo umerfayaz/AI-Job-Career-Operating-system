@@ -5,10 +5,15 @@ from typing import List, Dict, Optional
 from chromadb.utils import embedding_functions
 import structlog
 from backend.config.settings import Settings
+from itsdangerous import URLSafeTimedSerializer
 from datetime import datetime, timedelta
 import json
 import hashlib
 import os
+
+
+APPLY_LINK_SECRET = os.getenv("JWT_SECRET_KEY")
+serializer = URLSafeTimedSerializer(APPLY_LINK_SECRET)
 
 
 logger = structlog.get_logger()
@@ -445,10 +450,10 @@ class MemoryRAGSystem:
             job.get('google_apply_link')
         ) 
 
+        apply_token = serializer.dumps({"job_id": job_id, "user_id": user_id})
+
         redirect_link = (
-            f"{settings.APP_BASE_URL}/apply"
-            f"?job_id={job_id}&user_id={user_id}"
-        )
+            f"{settings.APP_BASE_URL}/apply?token={apply_token}")
 
         
         metadata = {

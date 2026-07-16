@@ -56,6 +56,7 @@ rank_bm25
 # Frontend Signup Auth Dependencies
 python-jose[cryptography]
 types-python-jose
+itsdangerous
 bcrypt
 pydantic[email]
 
