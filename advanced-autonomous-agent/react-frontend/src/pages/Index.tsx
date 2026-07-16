@@ -16,39 +16,39 @@ import {
 const FEATURES = [
   {
     icon: Brain,
-    title: "Autonomous Resume Analysis",
-    desc: "Multi-agent pipeline parses, scores, and rewrites your resume against real-time market signals — no manual tuning required.",
+    title: "Autonomous Multi-Agent Intelligence",
+    desc: "A coordinated AI workforce powered by specialized agents that reason, plan, execute, and continuously optimize your entire job search lifecycle.",
     gradient: "from-blue-500 to-cyan-500",
   },
   {
     icon: Target,
-    title: "Smart Job Matching",
-    desc: "Semantic search across 50+ job boards. The matcher agent ranks roles by skills, seniority, salary band, and remote policy.",
+    title: "Strategic Career Intelligence",
+    desc: "Combines hybrid retrieval, RAG, BM25, semantic search, and AI reranking to discover and prioritize the highest-value career opportunities.",
     gradient: "from-purple-500 to-pink-500",
   },
   {
+    icon: Rocket,
+    title: "Continuous Career Automation",
+    desc: "Runs autonomous workflows 24/7 to discover jobs, refine strategies, track applications, and improve outcomes without constant user intervention.",
+    gradient: "from-indigo-500 to-violet-500",
+  },
+  {
     icon: BarChart3,
-    title: "Live Reporting",
-    desc: "Daily reports compiled by the report agent: fit-score breakdowns, missing keywords, and outreach templates.",
+    title: "Decision Intelligence & Analytics",
+    desc: "Every workflow, recommendation, and autonomous decision is analyzed, audited, and transformed into actionable career insights.",
     gradient: "from-green-500 to-emerald-500",
   },
   {
     icon: Bell,
-    title: "Multi-Channel Alerts",
-    desc: "Push job hits to Slack, WhatsApp, Pushover, or email the moment a high-fit role is detected.",
+    title: "Application & Email Monitoring",
+    desc: "Tracks submitted applications, monitors employer responses, detects interviews, and delivers real-time notifications across connected channels.",
     gradient: "from-orange-500 to-yellow-500",
   },
   {
     icon: Lock,
-    title: "Verified & Private",
-    desc: "Email 2FA, encrypted resume storage, and zero data sharing. Your search stays yours.",
+    title: "Enterprise AI Governance",
+    desc: "Policy-driven execution with runtime governance, secure memory, human approval workflows, and auditable AI decision making.",
     gradient: "from-red-500 to-rose-500",
-  },
-  {
-    icon: Rocket,
-    title: "Auto-Apply Ready",
-    desc: "Generates tailored cover letters and one-click apply payloads for supported ATS providers.",
-    gradient: "from-indigo-500 to-violet-500",
   },
 ];
 
