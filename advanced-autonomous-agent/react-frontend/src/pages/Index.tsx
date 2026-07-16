@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import {ActiveSelection, AppSidebar} from '@/components/app-sidebar'
 import SystemHealth from './SystemHealth';
+import SubscriptionPage from '@/components/subscription';
 import { motion, AnimatePresence, useScroll, useTransform, useInView } from 'framer-motion';
 import { SiWhatsapp, SiGmail, SiSlack, SiTelegram } from "react-icons/si";
 import { 
@@ -967,7 +968,8 @@ const AgentDashboard = () => {
     "Live Activity",
     "System Health",
     "Real-Time Events",
-    "Active Operations"
+    "Active Operations",
+    "Upgrade Plan",
   ]
 
   const isTopLevelPage = topLevelPages.includes(activeItem);
@@ -1337,6 +1339,11 @@ const AgentDashboard = () => {
                 {activeTab.item === "Active Operations" && (
                   <motion.div key="ops" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <ActiveOperations />
+                  </motion.div>
+                )}
+                {activeTab.item === "Upgrade Plan" && (
+                  <motion.div key="subscription" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <SubscriptionPage />
                   </motion.div>
                 )}
               </AnimatePresence>

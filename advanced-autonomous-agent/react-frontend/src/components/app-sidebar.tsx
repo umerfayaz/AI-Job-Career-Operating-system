@@ -12,7 +12,7 @@ import {
   PanelLeftClose, PanelLeftOpen, Play, Plug, Radio, RefreshCw, ScrollText,
   Search, Settings, Shield, ShieldCheck, SlidersHorizontal, Sparkles, Target,
   Telescope, TrendingDown, TrendingUp, User, UserCircle, Users, Wand2, Wrench,
-  Zap, FlaskConical, Boxes, Gavel, MicVocal, Eye,
+  Zap, FlaskConical, Gavel, Eye
 } from "lucide-react";
 
 import {
@@ -105,18 +105,13 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    id: "models",
-    label: "Models & Training",
-    icon: Boxes,
+    id: "Subscription",
+    label: "Plans & Billing",
+    icon: CreditCard,
     accent: "text-fuchsia-400",
     glow: "0 0 24px -8px rgb(232 121 249 / 0.6)",
     items: [
-      { id: "model-registry", label: "Model Registry", icon: Boxes },
-      { id: "fine-tuning", label: "Fine-Tuning Jobs", icon: Wand2 },
-      { id: "evaluations", label: "Evaluations", icon: Gauge },
-      { id: "prompt-library", label: "Prompt Library", icon: MicVocal },
-      { id: "embeddings", label: "Embeddings", icon: Cpu },
-      { id: "experiments", label: "Experiments", icon: FlaskConical },
+      { id: "upgrade-plan", label: "Upgrade Plan", icon: CreditCard },
     ],
   },
   {
