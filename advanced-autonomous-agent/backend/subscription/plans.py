@@ -68,4 +68,4 @@ PLAN_REGISTRY = {
 
 def get_plan(plan: PlanType) -> SubscriptionPlan:
     return PLAN_REGISTRY[plan]
-    
+
