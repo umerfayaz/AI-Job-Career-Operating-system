@@ -18,7 +18,7 @@ class CurrentPlanResponse(BaseModel):
     features: list[str]
 
 class PlanResponse(BaseModel):
-    plan: str
+    id: str
     display_name: str
     daily_frontend_runs: int
     features: list[str]

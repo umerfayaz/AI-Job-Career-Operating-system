@@ -63,6 +63,7 @@ class SubscriptionService:
             async with AsyncSessionLocal() as session:
                 subscription = await session.merge(subscription)
                 await session.commit()
+                await session.refresh(subscription)
 
         return PLAN_REGISTRY[
             PlanType(subscription.plan)
@@ -84,15 +85,16 @@ class SubscriptionService:
             **usage
         }
     
-    async def authorize_autonomous_workflow(self, user_id: str):
+    async def authorize_autonomous_workflow(self, user_id: str) -> dict:
         plan = await self.get_plan(user_id)
 
         if FeatureType.AUTONOMOUS_WORKFLOW not in plan.features:
             raise HTTPException(
                 status_code=403,
-                detail= "error": "required_subscription",
-                "required_plan": "autonomous",
-                "Autonomous workflow required an Autonomous AI subscription",
+                detail= {"error": "required_subscription",
+                    "required_plan": PlanType.AUTONOMOUS.value,
+                    "message": "Autonomous workflow required an Autonomous AI subscription",
+                }
             )
         
         return {
@@ -100,12 +102,13 @@ class SubscriptionService:
             "plan": plan.id.value
         }
 
-    async def has_features(self, user_id:str, feature:FeatureType) -> bool:
+    async def has_feature(self, user_id:str, feature:FeatureType) -> bool:
         plan = await self.get_plan(user_id)
 
         return feature in plan.features
     
     async def get_dashboard_usage(self, user_id: str) -> dict:
+        plan = await self.get_plan(user_id)
         subscription = await self.get_subscription(user_id)
 
         if subscription is None:
@@ -120,7 +123,7 @@ class SubscriptionService:
             workflow_type="frontend"
         )
         return {
-            "plan": subscription.plan,
+            "plan": subscription.plan.value,
             "status": subscription.status,
             "used": used,
             "daily_limit": plan.daily_frontend_runs,
