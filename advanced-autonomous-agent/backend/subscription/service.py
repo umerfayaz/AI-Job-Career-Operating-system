@@ -49,7 +49,6 @@ class SubscriptionService:
 
 
     async def get_plan(self, user_id: str) -> PlanConfig:
-
         subscription = await self.get_subscription(user_id)
 
         if subscription is None:
@@ -62,7 +61,7 @@ class SubscriptionService:
             subscription.status = "expired"
 
             async with AsyncSessionLocal() as session:
-                subscription = session.merge(subscription)
+                subscription = await session.merge(subscription)
                 await session.commit()
 
         return PLAN_REGISTRY[
@@ -79,16 +78,21 @@ class SubscriptionService:
             workflow_type="frontend"
         )
 
-        return usage
+        return {
+            "authorized": True,
+            "plan": plan.id.value,
+            **usage
+        }
     
     async def authorize_autonomous_workflow(self, user_id: str):
-
         plan = await self.get_plan(user_id)
 
         if FeatureType.AUTONOMOUS_WORKFLOW not in plan.features:
             raise HTTPException(
                 status_code=403,
-                detail="Autonomous workflow required an upgraded subscription"
+                detail= "error": "required_subscription",
+                "required_plan": "autonomous",
+                "Autonomous workflow required an Autonomous AI subscription",
             )
         
         return {
@@ -97,14 +101,11 @@ class SubscriptionService:
         }
 
     async def has_features(self, user_id:str, feature:FeatureType) -> bool:
-
         plan = await self.get_plan(user_id)
 
         return feature in plan.features
-
     
     async def get_dashboard_usage(self, user_id: str) -> dict:
-
         subscription = await self.get_subscription(user_id)
 
         if subscription is None:
@@ -118,8 +119,6 @@ class SubscriptionService:
             user_id=user_id,
             workflow_type="frontend"
         )
-
-
         return {
             "plan": subscription.plan,
             "status": subscription.status,

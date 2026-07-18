@@ -12,7 +12,7 @@ subscription_service = SubscriptionService()
 
 @router.post("/authorize/frontend")
 async def get_frontend(user_id: str = Depends(get_current_user)):
-    return await subscription_service.authorize_autonomous_workflow(user_id)
+    return await subscription_service.authorize_frontend_workflow(user_id)
 
 @router.post("/authorize/autonomous")
 async def get_autonomous(user_id: str = Depends(get_current_user)):
@@ -28,7 +28,7 @@ async def get_curren_plan(user_id: str = Depends(get_current_user)):
     plan = await subscription_service.get_plan(user_id)
 
     return {
-        "plan": plan.id,
+        "plan": plan.id.value,
         "display_name": plan.display_name,
         "daily_frontend_runs": plan.daily_frontend_runs,
         "features": sorted([f.value for f in plan.features])
@@ -38,7 +38,7 @@ async def get_curren_plan(user_id: str = Depends(get_current_user)):
 async def list_all_plans():
     return [
         {
-            "id": p.id,
+            "id": p.id.value,
             "display_name": p.display_name,
             "daily_frontend_runs": p.daily_frontend_runs,
             "features": sorted([f.value for f in p.features]),
@@ -56,7 +56,7 @@ async def get_feature_access(feature_name: str, user_id: str = Depends(get_curre
     
     has_access = await subscription_service.has_features(user_id, feature)
 
-    return {"features": feature.value, "has_access": has_access}
+    return {"features": feature.value, "enabled": has_access}
 
 
 
