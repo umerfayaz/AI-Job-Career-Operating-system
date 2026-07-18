@@ -41,7 +41,6 @@ from backend.brain_outcomeLoop.profile_resolver import active_search_profile_key
 from backend.observability.workflow_metrics import WorkflowMetrics
 from  backend.observability.workflow_instance import metrics_collector
 from backend.api.admin_endpoints import router as admin_router
-from backend.api.user_plan import check_workflow_limit
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from backend.subscription.routes import router as subscription_router
@@ -350,8 +349,6 @@ async def upload_resume(
                     detail="Only PDF, DOCX, and TXT files are supported"
                 )
             
-             # Wrofklow Limit 
-            workflow_usage = await check_workflow_limit(user_id, plan="free")
             
             job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
 

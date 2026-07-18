@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from backend.postgreSQL.engine import Base
 from backend.postgreSQL import models
+from backend.subscription import models
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context

@@ -1,6 +1,7 @@
 
 from backend.postgreSQL.engine import engine, Base
-from backend.postgreSQL.models import Job, User, AgentState
+import backend.postgreSQL.models
+import backend.subscription.models
 
 async def init_db():
     async with engine.begin() as conn:

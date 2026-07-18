@@ -55,6 +55,12 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     jobs=relationship("Job", back_populates="user", cascade="all, delete-orphan")
     agent_state=relationship("AgentState", back_populates="user", uselist=False)
+    subscription = relationship(
+        "SubscriptionPlan",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_active = Column(DateTime(timezone=True))
 
