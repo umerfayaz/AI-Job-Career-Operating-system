@@ -90,6 +90,11 @@ class SubscriptionService:
                 status_code=403,
                 detail="Autonomous workflow required an upgraded subscription"
             )
+        
+        return {
+            "authorized": True,
+            "plan": plan.id.value
+        }
 
     async def has_features(self, user_id:str, feature:FeatureType) -> bool:
 
