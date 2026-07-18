@@ -1,5 +1,4 @@
-from datetime import date, datetime
-from pyexpat import features
+from datetime import datetime
 from pydantic import BaseModel
 
 
@@ -28,14 +27,13 @@ class FeatureAccessResponse(BaseModel):
     feature: str
     has_access: bool
 
-class FrontendAuthorizedResponse(BaseModel):
+class FrontendAuthorizationResponse(BaseModel):
     authorized: bool
     plan: str
     limit: int
     used: int
     remaining: int
 
-class AutonomousAuthorizedResponse(BaseModel):
+class AutonomousAuthorizationResponse(BaseModel):
     authorized: bool
     plan: str
-    

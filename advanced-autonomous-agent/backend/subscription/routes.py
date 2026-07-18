@@ -10,20 +10,20 @@ subscription_service = SubscriptionService()
 
 
 
-@router.post("/authorize/frontend")
+@router.post("/authorize/frontend", response_model=FrontendAuthorizationResponse)
 async def get_frontend(user_id: str = Depends(get_current_user)):
     return await subscription_service.authorize_frontend_workflow(user_id)
 
-@router.post("/authorize/autonomous")
+@router.post("/authorize/autonomous", response_model==AutonomousAuthorizationResponse)
 async def get_autonomous(user_id: str = Depends(get_current_user)):
     return await subscription_service.authorize_autonomous_workflow(user_id)
 
-@router.get("/usage")
+@router.get("/usage", response_model=UsageResponse )
 async def get_usage(user_id: str = Depends(get_current_user)):
     return await subscription_service.get_dashboard_usage(user_id)
 
 
-@router.get("/plan")
+@router.get("/plan", response_model=CurrentPlanResponse)
 async def get_curren_plan(user_id: str = Depends(get_current_user)):
     plan = await subscription_service.get_plan(user_id)
 
@@ -34,7 +34,7 @@ async def get_curren_plan(user_id: str = Depends(get_current_user)):
         "features": sorted([f.value for f in plan.features])
     }
 
-@router.get("/plans")
+@router.get("/plans", response_model=PlanResponse)
 async def list_all_plans():
     return [
         {
@@ -46,7 +46,7 @@ async def list_all_plans():
         for p in PLAN_REGISTRY.values()
     ]
 
-@router.get("/feature/{feature_name}")
+@router.get("/feature/{feature_name}", response_model=FeatureAccessResponse)
 async def get_feature_access(feature_name: str, user_id: str = Depends(get_current_user)):
 
     try:
