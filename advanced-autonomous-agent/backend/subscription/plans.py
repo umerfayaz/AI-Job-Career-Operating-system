@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from .enums import PlanType, FeatureType
 
 @dataclass(frozen=True)
-class SubscriptionPlan:
+class PlanConfig:
 
     id: PlanType
     display_name: str
@@ -11,7 +11,7 @@ class SubscriptionPlan:
     features: set[FeatureType] = field(default_factory=set)
 
   
-FREE_PLAN = SubscriptionPlan(
+FREE_PLAN = PlanConfig(
     id=PlanType.FREE,
     display_name="Free",
     daily_frontend_runs=3,
@@ -22,7 +22,7 @@ FREE_PLAN = SubscriptionPlan(
 )
 
 
-PRO_PLAN = SubscriptionPlan(
+PRO_PLAN = PlanConfig(
     id=PlanType.PROFESSIONAL,
     display_name="Professional",
     daily_frontend_runs=25,
@@ -36,7 +36,7 @@ PRO_PLAN = SubscriptionPlan(
     }
 )
 
-AUTONOMOUS_AI = SubscriptionPlan(
+AUTONOMOUS_AI = PlanConfig(
     id=PlanType.AUTONOMOUS,
     display_name="Autonomous AI",
     daily_frontend_runs=-1,
@@ -60,12 +60,12 @@ AUTONOMOUS_AI = SubscriptionPlan(
 
 
 PLAN_REGISTRY = {
-    PlanType.FREE: "FREE",
-    PlanType.PROFESSIONAL: "PROFESSIONAL",
-    PlanType.AUTONOMOUS: "AUTONOMOUS AI"
+    PlanType.FREE: FREE_PLAN,
+    PlanType.PROFESSIONAL: PRO_PLAN,
+    PlanType.AUTONOMOUS: AUTONOMOUS_AI
 }
 
 
-def get_plan(plan: PlanType) -> SubscriptionPlan:
+def get_plan(plan: PlanType) -> PlanConfig:
     return PLAN_REGISTRY[plan]
 

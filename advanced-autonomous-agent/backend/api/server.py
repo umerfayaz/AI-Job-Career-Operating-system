@@ -44,6 +44,7 @@ from backend.api.admin_endpoints import router as admin_router
 from backend.api.user_plan import check_workflow_limit
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from backend.subscription.routes import router as subscription_router
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 logger = structlog.get_logger()
 
@@ -136,6 +137,7 @@ app.state.event_bus = event_bus
 # Merging Auth frontend Router with Api file 
 app.include_router(auth_router)
 app.include_router(admin_router)
+app,include_router(subscription_router)
 
 app.add_middleware(
     TrustedHostMiddleware,

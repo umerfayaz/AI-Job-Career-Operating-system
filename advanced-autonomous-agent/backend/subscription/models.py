@@ -12,10 +12,10 @@ from sqlalchemy.orm import (
     relationship
 )
 
-from postgreSQL.engine import Base
+from backend.postgreSQL.engine import Base
 from .enums import PlanType
 
-class Subscription(Base):
+class SubscriptionPlan(Base):
 
     __tablename__ = "subscriptions"
 
@@ -29,7 +29,7 @@ class Subscription(Base):
 
     plan: Mapped[PlanType] = mapped_column(
         Enum(PlanType),
-        default=PlanType.FREE.value,
+        default=PlanType.FREE,
         nullable=False        
     )
 
