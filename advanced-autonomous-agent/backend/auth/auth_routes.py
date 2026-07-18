@@ -4,13 +4,15 @@ import httpx
 from uuid import uuid4
 import bcrypt
 import structlog
+from jose import jwt, JWTError
+from pydantic import BaseModel, EmailStr
 from backend.redis.redis_memory import redis_client
 from datetime import datetime, timedelta, timezone, UTC
 from fastapi import APIRouter, HTTPException, Depends, Request
 from backend.application import get_agent_app
+from backend.subscription.routes import subscription_service
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
-from jose import jwt, JWTError
+
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer()
@@ -228,6 +230,7 @@ async def signup(body: SignupRequest, request: Request):
             last_active=datetime.now(UTC)
         )
 
+        await subscription_service.create_free_subscription(user_id)
         token = create_token(user_id)
 
         # Session key for user signup

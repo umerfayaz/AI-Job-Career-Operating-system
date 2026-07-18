@@ -52,7 +52,10 @@ class SubscriptionService:
         subscription = await self.get_subscription(user_id)
 
         if subscription is None:
-            subscription = await self.create_free_subscription(user_id)
+            raise HTTPException(
+                status_code=404,
+                detail="Subscripition not found"
+            )
         
         if (subscription.expires_at and subscription.expires_at < datetime.now(UTC)
             and subscription.plan != PlanType.FREE
@@ -108,11 +111,16 @@ class SubscriptionService:
         return feature in plan.features
     
     async def get_dashboard_usage(self, user_id: str) -> dict:
-        plan = await self.get_plan(user_id)
         subscription = await self.get_subscription(user_id)
 
         if subscription is None:
-            subscription = await self.create_free_subscription(user_id)
+            raise HTTPException(
+                status_code=404,
+                detail= {
+                    "error": "subscription_not_found",
+                    "message": "Subscription not found"
+                }
+            )
         
         plan = PLAN_REGISTRY[
             PlanType(subscription.plan)
