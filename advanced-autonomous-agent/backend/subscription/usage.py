@@ -23,6 +23,7 @@ class UsageService:
                 detail={
                     "error": "workflow_limit_reached",
                     "workflow_type": workflow_type,
+                    "limit": daily_limit,
                     "used": current,
                     "remaining": 0
                 }

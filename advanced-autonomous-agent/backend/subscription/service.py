@@ -54,7 +54,10 @@ class SubscriptionService:
         if subscription is None:
             raise HTTPException(
                 status_code=404,
-                detail="Subscripition not found"
+                detail= {
+                    "error": "Subscription not found",
+                    "message": "Subscription not found"
+                }
             )
         
         if (subscription.expires_at and subscription.expires_at < datetime.now(UTC)

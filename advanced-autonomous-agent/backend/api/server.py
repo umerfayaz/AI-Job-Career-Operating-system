@@ -44,6 +44,7 @@ from backend.api.admin_endpoints import router as admin_router
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from backend.subscription.routes import router as subscription_router
+from backend.subscription.routes import subscription_service
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 logger = structlog.get_logger()
 
@@ -349,6 +350,7 @@ async def upload_resume(
                     detail="Only PDF, DOCX, and TXT files are supported"
                 )
             
+            await subscription_service.authorize_frontend_workflow(user_id)
             
             job_keywords = [k.strip() for k in keywords.split(",") if k.strip()]
 
