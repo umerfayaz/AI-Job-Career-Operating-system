@@ -14,14 +14,14 @@ export interface CurrentPlanResponse{
     plan: string;
     display_name: string;
     daily_frontend_runs: number;
-    feature: string[];
+    features: string[];
 }
 
 export interface PlanResponse {
     id: string;
     display_name: string;
     daily_frontend_runs: number;
-    feature: string[];
+    features: string[];
 }
 
 export interface FeatureAccessResponse {
