@@ -1,7 +1,10 @@
 import { Check } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/utils";
+import {
+  useSubscription 
+} from "@/components/subscription/useSubscription"
+
 import {  Card,
   CardContent,
   CardDescription,
@@ -88,6 +91,17 @@ const plans: Plan[] = [
 ];
 
 export default function SubscriptionPage() {
+  const {
+    usage,
+    currentPlan,
+    plans,
+    loading
+  } = useSubscription();
+
+  if (loading) {
+    return <div>loading ...</div>;
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-10 text-center">
@@ -98,6 +112,24 @@ export default function SubscriptionPage() {
           Upgrade your AI capabilities and unlock autonomous career automation.
         </p>
       </div>
+
+      {usage && (
+        <div className="mb-8 rounded-lg border p-6">
+          <h2 className="text-xl font-semibold">
+            Current Plan
+          </h2>
+
+          <p>{usage.plan}</p>
+
+          <p>
+            {usage.used} / {usage.daily_limit} workflow runs used
+          </p>
+
+          <p>
+            Remaining: {usage.remaining}
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {plans.map((plan) => (
