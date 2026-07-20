@@ -1,3 +1,12 @@
+from .schemas import (
+    UsageResponse,
+    CurrentPlanResponse,
+    PlanResponse,
+    FrontendAuthorizationResponse,
+    AutonomousAuthorizationResponse,
+    FeatureAccessResponse
+)
+
 from fastapi import APIRouter, Depends, HTTPException
 from backend.auth.auth_routes import get_current_user
 from .service import SubscriptionService
@@ -29,7 +38,10 @@ async def get_current_plan(user_id: str = Depends(get_current_user)):
     return{
         "plan": plan.id.value,
         "display_name": plan.display_name,
+        "price": plan.price,
+        "billing_period": plan.billing_period,
         "daily_frontend_runs": plan.daily_frontend_runs,
+        "description": plan.description,
         "features": sorted([f.value for f in plan.features])
     }
 
@@ -39,7 +51,10 @@ async def list_all_plans():
         {
             "id": p.id.value,
             "display_name": p.display_name,
+            "price": p.price,
+            "billing_period": p.billing_period,
             "daily_frontend_runs": p.daily_frontend_runs,
+            "description": p.description,
             "features": sorted([f.value for f in p.features]),
         }
         for p in PLAN_REGISTRY.values()
@@ -53,7 +68,7 @@ async def get_feature_access(feature_name: str, user_id: str = Depends(get_curre
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown feature:{feature_name}")
     
-    has_access = await subscription_service.has_features(user_id, feature)
+    has_access = await subscription_service.has_feature(user_id, feature)
 
     return {"feature": feature.value, "has_access": has_access}
 

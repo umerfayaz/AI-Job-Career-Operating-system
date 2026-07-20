@@ -14,13 +14,19 @@ class UsageResponse(BaseModel):
 class CurrentPlanResponse(BaseModel):
     plan: str
     display_name: str
+    price: int
+    billing_period: str
     daily_frontend_runs: int
+    description: str
     features: list[str]
 
 class PlanResponse(BaseModel):
     id: str
     display_name: str
+    price: int
+    billing_period: str
     daily_frontend_runs: int
+    description: str
     features: list[str]
 
 class FeatureAccessResponse(BaseModel):

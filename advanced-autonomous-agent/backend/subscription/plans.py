@@ -6,7 +6,10 @@ class PlanConfig:
 
     id: PlanType
     display_name: str
+    price: int
+    billing_period: str
     daily_frontend_runs: int
+    description: str
 
     features: set[FeatureType] = field(default_factory=set)
 
@@ -14,7 +17,10 @@ class PlanConfig:
 FREE_PLAN = PlanConfig(
     id=PlanType.FREE,
     display_name="Free",
+    price=0,
+    billing_period="Forever",
     daily_frontend_runs=3,
+    description="Perfect for getting started",
 
     features={
         FeatureType.FRONTEND_WORKFLOW
@@ -25,7 +31,10 @@ FREE_PLAN = PlanConfig(
 PRO_PLAN = PlanConfig(
     id=PlanType.PROFESSIONAL,
     display_name="Professional",
+    price=14,
+    billing_period="month",
     daily_frontend_runs=25,
+    description="For professionals who want higher workflow limits and advanced AI capabilities",
 
     features={
         FeatureType.FRONTEND_WORKFLOW,
@@ -38,8 +47,11 @@ PRO_PLAN = PlanConfig(
 
 AUTONOMOUS_AI = PlanConfig(
     id=PlanType.AUTONOMOUS,
-    display_name="Autonomous AI",
+    display_name="Autonomous AI OS",
+    price=30,
+    billing_period="month",
     daily_frontend_runs=-1,
+    description="Fully autonomous AI career operating system",
 
     features={
         FeatureType.FRONTEND_WORKFLOW,

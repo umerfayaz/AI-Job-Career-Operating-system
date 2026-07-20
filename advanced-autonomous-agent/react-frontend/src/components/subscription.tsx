@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/utils";
 import {
   useSubscription 
-} from "@/components/subscription/useSubscription"
+} from "@/subscription/useSubscripiton"
 
 import {  Card,
   CardContent,
