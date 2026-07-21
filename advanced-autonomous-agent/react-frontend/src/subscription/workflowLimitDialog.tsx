@@ -1,5 +1,5 @@
 import { AlertTriangle, Crown, Zap } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import {motion} from "framer-motion";
 
 import {
   Dialog,
@@ -21,14 +21,15 @@ interface WorkflowLimitDialogProps {
     remaining: number;
     workflow_type: string;
   } | null;
+  onUpgrade: () => void;
 }
 
 export default function WorkflowLimitDialog({
   open,
   onOpenChange,
   limitInfo,
+  onUpgrade,
 }: WorkflowLimitDialogProps) {
-  const navigate = useNavigate();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,12 +40,13 @@ export default function WorkflowLimitDialog({
           </div>
 
           <DialogTitle className="text-center text-2xl">
-            Daily Workflow Limit Reached
+            Today's Workflow Limit Reached
           </DialogTitle>
 
           <DialogDescription className="text-center">
-            You've used all of today's workflow runs available on your current
-            subscription.
+            You've reached the daily workflow limit for your current subscription.
+            Your quota will automatically reset tomorrow, or you can upgrade your plan
+            to unlock more daily workflow capacity.
           </DialogDescription>
         </DialogHeader>
 
@@ -122,14 +124,14 @@ export default function WorkflowLimitDialog({
             className="flex-1"
             onClick={() => onOpenChange(false)}
           >
-            Maybe Later
+            Close
           </Button>
 
           <Button
             className="flex-1"
             onClick={() => {
               onOpenChange(false);
-              navigate("/subscription");
+              onUpgrade();
             }}
           >
             Upgrade Plan

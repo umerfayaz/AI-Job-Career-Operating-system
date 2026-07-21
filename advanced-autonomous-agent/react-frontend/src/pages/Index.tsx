@@ -1272,7 +1272,12 @@ const AgentDashboard = () => {
                     )}
                     {activeTab.item === 'Job Matching' && (
                       <motion.div key="jobs" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
-                        <JobMatching setTaskId={setTaskId} addLog={addLog} setShowLogs={setShowLogs} />
+                        <JobMatching setTaskId={setTaskId} addLog={addLog} setShowLogs={setShowLogs} onUpgrade={() =>
+                          setActiveTab({
+                            group: "Command Center",
+                            item: "Upgrade Plan",
+                          })
+                        } />
                       </motion.div>
                     )}
                     {activeTab.item === 'Email Verification' && (
@@ -1531,7 +1536,7 @@ const RAGChatInterface = ({
 };
 
 // Job Matching Component
-const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
+const JobMatching = ({ setTaskId, addLog, setShowLogs, onUpgrade }: any) => {
   const [file, setFile] = useState<File | null>(null);
   const [email, setEmail] = useState('');
   const [keywords, setKeywords] = useState('');
@@ -1621,10 +1626,15 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
 
   return (
     <>
-    <WorkflowLimitDialog
-      open={limitReached}
-      onOpenChange={setLimitReached}
-      limitInfo={limitInfo}
+      <WorkflowLimitDialog
+        open={limitReached}
+        onOpenChange={setLimitReached}
+        limitInfo={limitInfo}
+        onUpgrade={() => {
+            setLimitReached(false);
+            onUpgrade();
+        }}
+
     />
 
     <div className="glass-panel p-8">
