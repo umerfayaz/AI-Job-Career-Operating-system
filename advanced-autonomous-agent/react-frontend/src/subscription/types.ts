@@ -13,14 +13,20 @@ export interface UsageResponse {
 export interface CurrentPlanResponse{
     plan: string;
     display_name: string;
+    price: number,
+    billing_period: string,
     daily_frontend_runs: number;
+    description: string,
     features: string[];
 }
 
 export interface PlanResponse {
     id: string;
     display_name: string;
+    price: number,
+    billing_period: string,
     daily_frontend_runs: number;
+    description: string,
     features: string[];
 }
 

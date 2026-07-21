@@ -1,9 +1,9 @@
 from datetime import datetime, UTC
-from enum import Enum
 from sqlalchemy import (
     String,
     DateTime,
-    ForeignKey
+    ForeignKey,
+    Enum
 )
 
 from sqlalchemy.orm import (

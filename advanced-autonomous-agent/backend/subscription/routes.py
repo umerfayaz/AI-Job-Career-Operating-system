@@ -33,7 +33,7 @@ async def get_usage(user_id: str = Depends(get_current_user)):
 
 @router.get("/plan", response_model=CurrentPlanResponse)
 async def get_current_plan(user_id: str = Depends(get_current_user)):
-    plan = await subscription_service.get_plan(user_id)
+    plan = await subscription_service.get_current_plan_details(user_id)
 
     return{
         "plan": plan.id.value,

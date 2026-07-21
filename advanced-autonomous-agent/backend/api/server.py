@@ -137,7 +137,7 @@ app.state.event_bus = event_bus
 # Merging Auth frontend Router with Api file 
 app.include_router(auth_router)
 app.include_router(admin_router)
-app,include_router(subscription_router)
+app.include_router(subscription_router)
 
 app.add_middleware(
     TrustedHostMiddleware,
@@ -616,7 +616,6 @@ async def upload_resume(
                 "status_endpoint": f"/task/{task_id}",
                 "status": "verification_pending",
                 "verification_required": True,
-                "usage": workflow_usage,
                 "brains_active": {
                     "langgraph": True,
                     "multi_agents": True

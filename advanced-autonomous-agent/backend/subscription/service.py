@@ -48,7 +48,7 @@ class SubscriptionService:
         return subscription
 
 
-    async def get_plan(self, user_id: str) -> PlanConfig:
+    async def get_current_plan_details(self, user_id: str) -> PlanConfig:
         subscription = await self.get_subscription(user_id)
 
         if subscription is None:
@@ -77,7 +77,7 @@ class SubscriptionService:
     
     async def authorize_frontend_workflow(self, user_id:str) -> dict:
 
-        plan = await self.get_plan(user_id)
+        plan = await self.get_current_plan_details(user_id)
 
         usage = await UsageService.check_daily_workflow_limit(
             user_id=user_id,

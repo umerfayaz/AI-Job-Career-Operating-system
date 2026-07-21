@@ -10,14 +10,15 @@ from backend.redis.redis_memory import redis_client
 from datetime import datetime, timedelta, timezone, UTC
 from fastapi import APIRouter, HTTPException, Depends, Request
 from backend.application import get_agent_app
-from backend.subscription.routes import subscription_service
+from backend.subscription.service import SubscriptionService
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer()
 logger = structlog.get_logger()
-
+subscription_service = SubscriptionService()
 
 # Turnstile Secret Key
 TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY")

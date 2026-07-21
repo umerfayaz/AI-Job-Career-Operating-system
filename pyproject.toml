@@ -16,6 +16,7 @@ dependencies = [
     "docx>=0.2.4",
     "fake-useragent>=1.5.1",
     "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
     "langchain>=0.3.27",
     "langchain-anthropic>=0.3.21",
     "langchain-community>=0.3.30",
