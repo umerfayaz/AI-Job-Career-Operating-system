@@ -988,7 +988,8 @@ const AgentDashboard = () => {
   
       {/* Main Content */}
       <main
-        className="flex-1 min-w-0 w-full overflow-x-hidden pl-16 lg:pl-0">
+          className="flex-1 min-w-0 w-full overflow-x-hidden transition-all duration-200"
+          style={{ paddingLeft: window.innerWidth >= 1024 ? 0 : sidebarWidth }}>
     
         <div className="min-h-screen bg-background relative overflow-hidden">
   
@@ -1533,6 +1534,8 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
   const [keywords, setKeywords] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [limitReached, setLimitReached] =  useState(false);
+  const [limitInfo, setLimitInfo] = useState<any>(null);
   
 
   const handleDrag = (e: React.DragEvent) => {
@@ -1580,7 +1583,15 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
         body: formData,
       });
 
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      if (response.status === 429){
+        const error = await response.json();
+
+        setLimitInfo(error.detail);
+        setLimitReached(true)
+
+        return;
+        
+      }
 
       const data = await response.json();
       localStorage.setItem('pendingUserID', data.task_id);
