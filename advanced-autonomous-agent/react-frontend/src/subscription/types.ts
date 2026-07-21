@@ -47,3 +47,11 @@ export interface AutonomousAuthorizationResponse {
     authorized: boolean;
     plan: string;
 }
+
+export interface WorkflowLimitInfo {
+    error: string,
+    workflow_type: string,
+    limit: number,
+    used: number,
+    remaining: number
+}

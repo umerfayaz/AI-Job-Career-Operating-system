@@ -3,8 +3,10 @@ import { useAuth } from '@/hooks/useAuth';
 import {ActiveSelection, AppSidebar} from '@/components/app-sidebar'
 import SystemHealth from './SystemHealth';
 import SubscriptionPage from '@/components/subscription';
+import WorkflowLimitDialog from '@/subscription/workflowLimitDialog';
 import { motion, AnimatePresence, useScroll, useTransform, useInView } from 'framer-motion';
 import { SiWhatsapp, SiGmail, SiSlack, SiTelegram } from "react-icons/si";
+import { WorkflowLimitInfo } from '@/subscription/types';
 import { 
   Upload, FileText, Briefcase, CheckCircle, Loader, Brain, MessageSquare, 
   Shield, Terminal, Sparkles, X, Activity, Download, Zap, Server, Database, 
@@ -12,6 +14,7 @@ import {
   Star, Bell, Lock
 
 } from 'lucide-react';
+
 
 const FEATURES = [
   {
@@ -1535,7 +1538,7 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [limitReached, setLimitReached] =  useState(false);
-  const [limitInfo, setLimitInfo] = useState<any>(null);
+  const [limitInfo, setLimitInfo] = useState<WorkflowLimitInfo | null>(null);
   
 
   const handleDrag = (e: React.DragEvent) => {
@@ -1590,7 +1593,7 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
         setLimitReached(true)
 
         return;
-        
+
       }
 
       const data = await response.json();
@@ -1617,6 +1620,13 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
   };
 
   return (
+    <>
+    <WorkflowLimitDialog
+      open={limitReached}
+      onOpenChange={setLimitReached}
+      limitInfo={limitInfo}
+    />
+
     <div className="glass-panel p-8">
       <div className="flex items-center gap-4 mb-8">
         <motion.div 
@@ -1738,6 +1748,7 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs }: any) => {
         </motion.button>
       </div>
     </div>
+    </>
   );
 };
 
@@ -1826,6 +1837,7 @@ const EmailVerificationSection = ({ addLog, setShowLogs, setReportUrl, taskID, o
   };
 
   return (
+
     <div className="glass-panel p-8">
       <div className="flex items-center gap-4 mb-8">
         <motion.div 
