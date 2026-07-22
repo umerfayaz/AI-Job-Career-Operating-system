@@ -34,10 +34,47 @@ export default function WorkflowLimitDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
+        <motion.div
+            initial={{
+            opacity: 0,
+            scale: 0.92,
+            y: 20,
+            }}
+            animate={{
+            opacity: 1,
+            scale: 1,
+            y: 0,
+            }}
+            exit={{
+            opacity: 0,
+            scale: 0.96,
+            y: 10,
+            }}
+            transition={{
+            duration: 0.35,
+            ease: [0.22, 1, 0.36, 1],
+            }}
+        >
         <DialogHeader>
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-            <AlertTriangle className="h-7 w-7 text-destructive" />
-          </div>
+            <motion.div
+                initial={{
+                    scale: 0,
+                    rotate: -90,
+                }}
+                animate={{
+                    scale: 1,
+                    rotate: 0,
+                }}
+                transition={{
+                    type: "spring",
+                    stiffness: 260,
+                    damping: 18,
+                    delay: 0.15,
+                }}
+                className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10"
+            >
+                <AlertTriangle className="h-7 w-7 text-destructive" />
+            </motion.div>
 
           <DialogTitle className="text-center text-2xl">
             Today's Workflow Limit Reached
@@ -138,6 +175,7 @@ export default function WorkflowLimitDialog({
           </Button>
 
         </div>
+       </ motion.div>
       </DialogContent>
     </Dialog>
   );
