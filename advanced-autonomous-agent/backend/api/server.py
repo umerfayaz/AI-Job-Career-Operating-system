@@ -125,8 +125,8 @@ app = FastAPI(
     version="2.0.0",
     description="Dual-brain system: LangGraph + Multi-Agents",
     lifespan=lifespan,
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json"
+    docs_url=None,
+    openapi_url=None
 )
 
 app.state.pending_workflows = pending_workflows
