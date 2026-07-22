@@ -187,7 +187,7 @@ async def admin_users(
                         "email": getattr(user, "email", None),
                         "created_at": user.created_at.isoformat()
                             if getattr(user, "created_at", None) else None,
-                        "last_active_at": user.last_active_at.isofomrat()
+                        "last_active_at": user.last_active_at.isoformat()
                             if getattr(user, "last_active_at", None) else None                    
                     }
                     for user in users

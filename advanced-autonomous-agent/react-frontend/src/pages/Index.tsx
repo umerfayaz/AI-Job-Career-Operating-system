@@ -766,7 +766,6 @@ const AgentDashboard = () => {
           reports_generated: data.reports_generated ?? 0
         });
   
-        addLog("📊 Stats loaded from backend", "info");
       } catch (err) {
         console.error("Failed to fetch stats:", err);
       }
@@ -794,7 +793,6 @@ const AgentDashboard = () => {
       
       ws.onopen = () => {
         setWsConnected(true);
-        addLog('🔌 Connected to backend event stream', 'success');
         
         pingref.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send('ping');
@@ -838,7 +836,6 @@ const AgentDashboard = () => {
             reports_generated: data.payload.reports_generated
           });
         
-          addLog("📊 Stats updated", "info");
           return;
         }
 
@@ -913,7 +910,6 @@ const AgentDashboard = () => {
       
       ws.onerror = () => {
         setWsConnected(false);
-        addLog('WebSocket connection error', 'error');
       };
       
       ws.onclose = () => {
@@ -922,12 +918,9 @@ const AgentDashboard = () => {
           clearInterval(pingref.current);
           pingref.current = null;
         }
-
-        addLog('🔌 Disconnected from backend', 'warning');
         
         if (!manuallyClosedRef.current) {
           reconnectTimeoutRef.current = setTimeout(() => {
-            addLog('🔄 Attempting to reconnect...', 'info');
             connectWebSocket();
           }, 3000);
         }
@@ -1570,7 +1563,6 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs, onUpgrade }: any) => {
     setShowLogs(true);
     
     addLog('🚀 Starting job matching process...', 'info');
-    addLog(`📄 Processing file: ${file.name}`, 'info');
 
     const formData = new FormData();
     formData.append('file', file);
@@ -1578,7 +1570,6 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs, onUpgrade }: any) => {
     formData.append('keywords', keywords);
 
     try {
-      addLog('📤 Uploading resume to backend...', 'info');
       const BASE =  import.meta.env.VITE_BACKEND_URL || "/api";
 
       const token = localStorage.getItem("auth_token")
@@ -1605,20 +1596,16 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs, onUpgrade }: any) => {
       localStorage.setItem('pendingUserID', data.task_id);
       
       addLog('✅ Resume uploaded successfully', 'success');
-      addLog(`📋 Task ID: ${data.task_id}`, 'info');
       setTaskId(data.task_id);
       
       if (data.verification_required) {
         addLog('🔐 Email verification required', 'warning');
-        addLog(`📧 Verification email sent to: ${email || 'extracted email'}`, 'info');
       }
       
       setFile(null);
       setEmail('');
       setKeywords('');
     } catch (error: any) {
-      addLog('❌ Error: ' + error.message, 'error');
-      addLog('💡 Make sure your backend is running on /api', 'warning');
     } finally {
       setIsSubmitting(false);
     }
@@ -1701,33 +1688,6 @@ const JobMatching = ({ setTaskId, addLog, setShowLogs, onUpgrade }: any) => {
             )}
           </label>
         </motion.div>
-
-        {/* Email input */}
-        <div>
-          <label className="block text-sm font-semibold text-foreground mb-3">Email (Optional)</label>
-          <motion.input
-            whileFocus={{ scale: 1.01 }}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="your.email@example.com"
-            className="w-full px-4 py-3 bg-card border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-foreground placeholder-muted-foreground outline-none"
-          />
-          <p className="text-xs text-muted-foreground mt-2">If not provided, we'll extract it from your resume</p>
-        </div>
-
-        {/* Keywords input */}
-        <div>
-          <label className="block text-sm font-semibold text-foreground mb-3">Keywords (optional)</label>
-          <motion.input
-            whileFocus={{ scale: 1.01 }}
-            type="text"
-            value={keywords}
-            onChange={(e) => setKeywords(e.target.value)}
-            placeholder="python, AI, backend"
-            className="w-full px-4 py-3 bg-card border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-foreground placeholder-muted-foreground outline-none"
-          />
-        </div>
 
         {/* Submit button */}
         <motion.button
@@ -1832,9 +1792,7 @@ const EmailVerificationSection = ({ addLog, setShowLogs, setReportUrl, taskID, o
           onVerificationSuccess(result.task_id || taskID);
         }
       } else {
-        const errorMsg = result.error || result.message || 'Invalid code';
-        addLog('❌ Verification failed: ' + errorMsg, 'error');
-        setMessage({ text: '❌ ' + errorMsg, type: 'error' });
+  
         setCode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
@@ -1979,7 +1937,6 @@ const BackendLogsPanel = ({ logs, reportUrl, wsConnected, currentRunId }: any) =
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Terminal className="w-5 h-5 text-accent" />
-            <h3 className="font-bold text-foreground">Backend Logs</h3>
           </div>
           <motion.div 
             animate={wsConnected ? { scale: [1, 1.2, 1] } : {}}
