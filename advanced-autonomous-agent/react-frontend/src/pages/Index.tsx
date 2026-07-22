@@ -1073,38 +1073,6 @@ const AgentDashboard = () => {
                   transition={{ duration: 0.5, delay: 0.1 }}
                 >
   
-                  {/* Connection status */}
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${
-                      wsConnected
-                        ? 'bg-accent/10 border-accent/30'
-                        : 'bg-destructive/10 border-destructive/30'
-                    }`}
-                  >
-                    <div
-                      className={`relative w-2 h-2 rounded-full ${
-                        wsConnected ? 'bg-accent' : 'bg-destructive'
-                      }`}
-                    >
-                      {wsConnected && <span className="pulse-ring" />}
-                    </div>
-  
-                    <Zap
-                      className={`w-4 h-4 ${
-                        wsConnected ? 'text-accent' : 'text-destructive'
-                      }`}
-                    />
-  
-                    <span
-                      className={`text-xs font-medium ${
-                        wsConnected ? 'text-accent' : 'text-destructive'
-                      }`}
-                    >
-                      {wsConnected ? 'Live' : 'Offline'}
-                    </span>
-                  </motion.div>
-  
                   {/* Agent count */}
                   <motion.div
                     whileHover={{ scale: 1.05 }}
