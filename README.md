@@ -134,7 +134,10 @@ Comprehensive analytics dashboard providing operational insights, engagement met
 
 ---
 
+### User Subscription Page
+![Workflow_subscripiton](workflow_demos/Screenshot 2026-07-23 194826.png)
 
+Unlock persistent autonomous career workflows that continuously search, evaluate, and optimize job opportunities on your behalf.
 
 
 
@@ -144,9 +147,7 @@ Comprehensive analytics dashboard providing operational insights, engagement met
 
 OpenTelemetry-powered distributed tracing dashboard providing complete visibility into agent orchestration, LLM interactions, memory operations, retrieval pipelines, semantic matching, and workflow execution performance across the autonomous system.
 
-
-
-
+---
 
 
 
