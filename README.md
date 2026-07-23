@@ -135,7 +135,7 @@ Comprehensive analytics dashboard providing operational insights, engagement met
 ---
 
 ### User Subscription Page
-![Workflow_subscripiton](workflow_demos/Screenshot 2026-07-23 194826.png)
+![Workflow_subscripiton=](workflow_demos/subscription_page.png)
 
 Unlock persistent autonomous career workflows that continuously search, evaluate, and optimize job opportunities on your behalf.
 
