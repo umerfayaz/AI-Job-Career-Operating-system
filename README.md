@@ -1,14 +1,35 @@
 # AI Job Career Operating System
 
+![Status](https://img.shields.io/badge/Status-Public%20Beta-success)
+![Python](https://img.shields.io/badge/Python-3.13-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-LangGraph-green)
+![Docker](https://img.shields.io/badge/Docker-Containerized-blue)
+
 An agentic AI career platform that analyzes resumes, fetches relevant jobs, matches opportunities using RAG, hybrid retrieval, reranking, and generates personalized job reports.
 
 The system is designed as a multi-brain architecture with user-triggered workflows today and optional autonomous outcome tracking for future production deployment.
 
 ## Live Demo
 
-Frontend: Coming soon
-Backend API: Coming soon
-GitHub: This repository
+🌐 **Live Platform:** https://autoagent.space
+
+Try the public beta:
+- Create an account
+- Upload your resume
+- Run AI-powered job matching workflows
+- Receive personalized reports
+- Experience autonomous multi-agent execution
+
+GitHub Repository:
+https://github.com/umerfayaz/AI-Job-Career-Operating-system
+
+
+## Why AutoAgent OS
+
+Most AI career tools provide a single response and stop.
+
+AutoAgent OS is designed as an autonomous multi-agent platform that continuously executes long-running career workflows—including resume analysis, intelligent job retrieval, semantic matching, report generation, and future autonomous career management—rather than functioning as a traditional chatbot.
+
 
 ## What It Does
 
@@ -390,15 +411,12 @@ Completed
 - OpenTelemetry
 - Jaeger Observability
 
-In Progress
+Completed
 
 - Ubuntu VPS Deployment
-- HTTPS
-- Domain
-- CI/CD
-- AgentOps
-- LLM Evaluations
-- AI Guardrails
+- Production VPS Hosting
+- HTTPS (Let's Encrypt)
+- Custom Domain
 
 ## Future Roadmap
 
