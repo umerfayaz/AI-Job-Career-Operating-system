@@ -15,6 +15,7 @@ env/
 .env
 .env.*
 *.env
+!.env.example
 react-frontend/.env
 
 # Google Service Account (do not upload)
